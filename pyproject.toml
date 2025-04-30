@@ -1,0 +1,24 @@
+[project]
+name = "gem-screening"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Benoit Roux", email = "benoit.roux@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "a1-manager",
+    "celltinder",
+]
+
+[project.scripts]
+gem-screening = "gem_screening:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv.sources]
+a1-manager = { path = "../A1_manager", editable = true }
+celltinder = { path = "../CellTinder", editable = true }
