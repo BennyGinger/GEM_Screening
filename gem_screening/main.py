@@ -2,10 +2,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from celltinder import run_cell_tinder
-from a1_manager import A1Manager, run_autofocus, launch_dish_workflow
+from a1_manager import A1Manager, launch_dish_workflow
 
-from autofocus.af_main import do_autofocus
-from dish.dish_main import Dish
 from microscope_software.well_module import Well
 from utils.utils import create_date_savedir, timer
 
@@ -116,39 +114,6 @@ def stimulate_cells(well_obj: Well, settings: dict, aquisition: A1Manager)-> Non
     
     # Save the well object
     well_obj.to_json()
-
-def initialize_dish_grid(aquisition: A1Manager, run_dir: Path, dish_settings: dict, autofocus_settings: dict)-> tuple[dict,dict] | None:
-    # Unpack settings
-    init_dish = {k:v for k,v in dish_settings.items() if k in ['dish_name', 'well_selection']}
-    init_dish['run_dir'] = run_dir
-    grid_dish = {k:v for k,v in dish_settings.items() if k in ['dmd_window_only', 'numb_field_view', 'overlap']}
-    grid_dish['aquisition'] = aquisition
-    
-    # Initialise dish and genrate points
-    dish = Dish(**init_dish)
-    
-    # Get the filter turret, if DMD is attached. Else, set to None
-    if aquisition.is_dmd_attached:
-        fTurret = aquisition.core.get_property('FilterTurret1','Label')
-    else:
-        fTurret = None
-    
-    # Initiate dish calibration
-    dish.config_dish(fTurret)
-    
-    # Calibrate dish
-    dish.get_dish_measurments(aquisition.nikon, dish_settings['overwrite_calib'])
-    
-    # Do autofocus, will update the dish_measurment with the focus points
-    is_autofocused = do_autofocus(**autofocus_settings, 
-                                  aquisition=aquisition,
-                                  calib_path=dish.calib_path,
-                                  well_selection=dish_settings['well_selection'])
-    if not is_autofocused:
-        return None
-    
-    # Generate the different field of views for each well and their focus points
-    return dish.generate_dish_grid(**grid_dish) 
 
 def initialize_well_object(well: str, well_grid: dict[int,dict], well_dir: Path)-> Well: 
     
