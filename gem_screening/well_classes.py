@@ -6,7 +6,7 @@ from typing import Optional
 
 from a1_manager import StageCoord
 
-from gem_screening.serializers import CustomJSONEncoder, custom_decoder
+from gem_screening.utils.serializers import CustomJSONEncoder, custom_decoder
 
 
 @dataclass(slots=True)
