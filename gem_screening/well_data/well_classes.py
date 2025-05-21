@@ -1,3 +1,4 @@
+from __future__ import annotations
 from dataclasses import dataclass, field
 import json
 from pathlib import Path
@@ -91,13 +92,15 @@ class Well:
     """
     Class to store the information of a well. Contains the paths to the different images and masks folders, as well as the list of field of views objects, which contains the coordinates of all field of views in the well, as well as the paths of all the image/mask files associated with each field of view.
     Attributes:
-        run_dir (Path): Path to the main directory of the run. Only used at initialization.
+        run_dir (Path): Path to the main run directory.
+        well_grid (dict[int, StageCoord]): Dictionary mapping field of view instance numbers to their coordinates.
         well (str): Well name.
         well_dir (Path): Path to the well directory.
+        config_dir (Path): Path to the configuration directory.
         img_dir (Path): Path to the images directory.
         mask_dir (Path): Path to the masks directory.
         csv_path (Path): Path to the CSV file containing cell data.
-        fov_obj_list (list[FieldOfView]): List of FieldOfView objects for each field of view in the well.
+        fov_obj_list (list[FieldOfView]): List of FieldOfView objects associated with the well.
     """
     run_dir: Path
     well_grid: dict[int, StageCoord]
@@ -107,7 +110,7 @@ class Well:
     img_dir: Path = field(init=False)
     mask_dir: Path = field(init=False)
     csv_path: Path = field(init=False)
-    fov_obj_list: list[FieldOfView] = field(default_factory=list)
+    fov_obj_list: list[FieldOfView] = field(init=False)
     
     def __post_init__(self)-> None:
         # Setup the main well directory
@@ -124,9 +127,11 @@ class Well:
         self.mask_dir.mkdir(parents=True, exist_ok=True)
         self.csv_path = self.well_dir.joinpath(f"{self.well}_cell_data.csv")
         
-        # only unpack if we didn’t load from JSON
-        if not self.fov_obj_list:
-            self.fov_obj_list = self._unpack_fov()
+        # Unpack the field of view objects
+        self.fov_obj_list = self._unpack_fov()
+            
+        # Save the well object to a JSON file
+        self.to_json()
         
     def _reset_folder(self)-> None:
         """

@@ -8,8 +8,8 @@ from a1_manager import StageCoord
 
 if TYPE_CHECKING:
     # these lines are invisible at runtime, but IDEs index them
-    from gem_screening.well_classes import Well
-    from gem_screening.well_classes import FieldOfView
+    from gem_screening.well_manager.well_classes import Well
+    from gem_screening.well_manager.well_classes import FieldOfView
     
        
 class CustomJSONEncoder(json.JSONEncoder):
