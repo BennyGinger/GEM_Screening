@@ -1,6 +1,10 @@
 from pathlib import Path
 from datetime import datetime
 from typing import Union
+import os
+
+import numpy as np
+from tifffile import imwrite
 
 
 def create_timestamped_dir(parent: Union[str, Path], suffix: str = "", date_format: str = "%Y%m%d") -> Path:
@@ -23,3 +27,15 @@ def create_timestamped_dir(parent: Union[str, Path], suffix: str = "", date_form
     target = p.joinpath(name)
     target.mkdir(exist_ok=True)
     return target
+
+def imwrite_atomic(final_path: Path, image_data: np.ndarray, **kwargs):
+    """
+    Atomically write a TIFF image.
+    
+    The image is first written to a temporary file (with a .tmp extension)
+    and then renamed to the final filename. Ensure that the final file is
+    completely written before any file watcher sees it.
+    """
+    temp_path = final_path.joinpath(".tmp")
+    imwrite(temp_path, image_data, compression='zlib', **kwargs)
+    os.rename(temp_path, final_path)

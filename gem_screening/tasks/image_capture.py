@@ -1,9 +1,9 @@
 from pathlib import Path
 
 from a1_manager import A1Manager
-from tifffile import imwrite
 from progress_bar import setup_progress_monitor as progress_bar
 
+from gem_screening.utils.filesystem import imwrite_atomic
 from gem_screening.utils.prompts import prompt_to_continue, ADD_LIGAND_PROMPT
 from gem_screening.well_data.well_classes import FieldOfView, Well
 
@@ -97,9 +97,8 @@ def _take_image_fov(fov_obj: FieldOfView, a1_manager: A1Manager, input_preset: d
     img = a1_manager.snap_image()
     
     # Save image
-    img_path = img_dir.joinpath(f"{fov_obj.fov_ID}_{imaging_loop}.png")
-    # FIXME: Need to check the atomic saving from server
-    imwrite(img_path, img.astype('uint16'), compression='zlib')
+    img_path = img_dir.joinpath(f"{fov_obj.fov_ID}_{imaging_loop}.tif")
+    imwrite_atomic(img_path, img.astype('uint16'))
     fov_obj.add_image(imaging_loop, img_path)
     
 
