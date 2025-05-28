@@ -11,6 +11,7 @@ dependencies = [
     "a1-manager",
     "celltinder",
     "cp-server",
+    "dotenv>=0.9.9",
     "progress-bar",
 ]
 
