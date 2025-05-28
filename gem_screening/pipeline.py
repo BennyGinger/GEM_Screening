@@ -4,6 +4,7 @@ from pathlib import Path
 
 from celltinder import run_cell_tinder
 from a1_manager import A1Manager, launch_dish_workflow
+from cp_server import ComposeManager
 
 from gem_screening.tasks.image_capture import QuitImageCapture, scan_cells
 from gem_screening.utils.filesystem import create_timestamped_dir
@@ -20,35 +21,36 @@ def complete_pipeline(settings: dict) -> None:
     Args:
         settings (dict): Dictionary containing all the settings for the pipeline.
     """
-    # Initialise mm and set up microscope
-    a1_manager = A1Manager(**settings['aquisition_settings'])
-    
-    # Initialise pipeline
-    run_dir = create_timestamped_dir(settings['savedir'], settings['savedir_name'])
-    
-    # Prompt user to focus on cells
-    if not prompt_to_continue(FOCUS_PROMPT):
-        return
-    
-    # Generate the dish_grid
-    dish_grid = launch_dish_workflow(a1_manager, run_dir, **settings['dish_settings'])
-    
-    # Start imaging
-    for well, well_grid in dish_grid.items():
-        # Create a well object
-        well_obj = Well(run_dir=run_dir,
-                        well_grid=well_grid,
-                        well_name=well)
+    with ComposeManager():
+        # Initialise mm and set up microscope
+        a1_manager = A1Manager(**settings['aquisition_settings'])
         
-        # Scan cells
-        try:
-            scan_cells(well_obj, settings, a1_manager)
+        # Initialise pipeline
+        run_dir = create_timestamped_dir(settings['savedir'], settings['savedir_name'])
         
-        except QuitImageCapture:  
-            logger.info("User chose to quit the image capture process.")
-            break
+        # Prompt user to focus on cells
+        if not prompt_to_continue(FOCUS_PROMPT):
+            return
         
-        logger.info("Image capture process completed.")
+        # Generate the dish_grid
+        dish_grid = launch_dish_workflow(a1_manager, run_dir, **settings['dish_settings'])
+        
+        # Start imaging
+        for well, well_grid in dish_grid.items():
+            # Create a well object
+            well_obj = Well(run_dir=run_dir,
+                            well_grid=well_grid,
+                            well_name=well)
+            
+            # Scan cells
+            try:
+                scan_cells(well_obj, settings, a1_manager)
+            
+            except QuitImageCapture:  
+                logger.info("User chose to quit the image capture process.")
+                break
+            
+            logger.info("Image capture process completed.")
         
 
     

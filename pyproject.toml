@@ -10,6 +10,7 @@ requires-python = ">=3.12"
 dependencies = [
     "a1-manager",
     "celltinder",
+    "cp-server",
     "progress-bar",
 ]
 
@@ -24,3 +25,4 @@ build-backend = "hatchling.build"
 a1-manager = { path = "../A1_manager", editable = true }
 celltinder = { path = "../CellTinder", editable = true }
 progress-bar = { path = "../Progress_bar", editable = true }
+cp-server = { path = "../CP_server", editable = true }
