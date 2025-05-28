@@ -5,7 +5,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-
 def get_hostname() -> str:
     """
     Get the hostname of the current machine.
@@ -26,14 +25,14 @@ def get_hostname() -> str:
         hname = "unknown-host"
     return hname
 
+HOST_PREFIX = get_hostname()
+
 def make_run_id() -> str:
     """
     Generate a unique run ID based on the hostname and a UUID.
     Returns:
         str: A unique run ID.
     """
-    hostname = get_hostname()
-    
     unique_id = uuid.uuid4().hex
-    run_id = f"{hostname}-{unique_id}"
+    run_id = f"{HOST_PREFIX}-{unique_id}"
     return run_id
