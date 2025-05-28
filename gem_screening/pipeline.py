@@ -7,7 +7,9 @@ from a1_manager import A1Manager, launch_dish_workflow
 from cp_server import ComposeManager
 
 from gem_screening.tasks.image_capture import QuitImageCapture, scan_cells
+from gem_screening.utils.client import cleanup_stale
 from gem_screening.utils.filesystem import create_timestamped_dir
+from gem_screening.utils.identifiers import make_run_id
 from gem_screening.utils.prompts import prompt_to_continue, FOCUS_PROMPT
 from gem_screening.well_data.well_classes import Well
 
@@ -15,7 +17,7 @@ from gem_screening.well_data.well_classes import Well
 logger = logging.getLogger(__name__)
 
 ################# Main Function #################
-def complete_pipeline(settings: dict) -> None:
+def complete_pipeline(settings: dict[str, any]) -> None:
     """
     Main function to run the complete pipeline for cell imaging and stimulation.
     Args:
@@ -27,6 +29,8 @@ def complete_pipeline(settings: dict) -> None:
         
         # Initialise pipeline
         run_dir = create_timestamped_dir(settings['savedir'], settings['savedir_name'])
+        run_id = make_run_id()
+        logger.info(f"Created run directory: {run_dir} with run ID: {run_id}")
         
         # Prompt user to focus on cells
         if not prompt_to_continue(FOCUS_PROMPT):
@@ -34,6 +38,9 @@ def complete_pipeline(settings: dict) -> None:
         
         # Generate the dish_grid
         dish_grid = launch_dish_workflow(a1_manager, run_dir, **settings['dish_settings'])
+        
+        # Clean up the redis server
+        cleanup_stale()
         
         # Start imaging
         for well, well_grid in dish_grid.items():
