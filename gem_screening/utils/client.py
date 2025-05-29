@@ -2,48 +2,14 @@ import logging
 import requests
 import os
 
-from dotenv import load_dotenv
-
 from gem_screening.utils.identifiers import HOST_PREFIX
-from gem_screening import ROOT_DIR
 
 
 logger = logging.getLogger(__name__)
 
 
-def get_env_var() -> str:
-    """
-    Get the FASTAPI_BASE_URL from the environment variables.
-    If not set, it will create a template .env file, but raise an error as the user must set it.
-    Returns:
-        str: The FASTAPI_BASE_URL or "http://localhost:8000" if not set.
-        
-    Raises:
-        FileNotFoundError: If the .env file does not exist and needs to be checked.
-    """
-
-    template = """
-    # ⚠️ Please review and customize this file before running again ⚠️
-
-    # Critical, must be determined by the user:
-    FASTAPI_BASE_URL=http://localhost:8000
-    """
-
-    env_path = ROOT_DIR.joinpath(".env")
-    if not env_path.exists():
-        # write the template out
-        env_path.write_text(template)
-        logger.error(f"No .env found: created template at {env_path}")
-        raise FileNotFoundError(
-            f".env not found. A template has been created at {env_path}. "
-            "Please set FASTAPI_BASE_URL before rerunning.")
-    
-    # Read the .env file
-    load_dotenv(env_path, override=False)
-    return os.getenv("FASTAPI_BASE_URL", "http://localhost:8000")
-
-# Configuration
-BASE_URL = get_env_var()
+# Configuration, load from environment variable, which is launched in the main file (i.e. pipeline.py)
+BASE_URL = os.getenv("FASTAPI_BASE_URL") 
 
 
 def cleanup_stale() -> None:
