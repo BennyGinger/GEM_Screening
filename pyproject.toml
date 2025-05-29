@@ -12,6 +12,7 @@ dependencies = [
     "celltinder",
     "cp-server",
     "dotenv>=0.9.9",
+    "gem-logging",
     "progress-bar",
 ]
 
@@ -27,3 +28,4 @@ a1-manager = { path = "../A1_manager", editable = true }
 celltinder = { path = "../CellTinder", editable = true }
 progress-bar = { path = "../Progress_bar", editable = true }
 cp-server = { path = "../CP_server", editable = true }
+gem-logging = { path = "../GEM_Logging", editable = true }

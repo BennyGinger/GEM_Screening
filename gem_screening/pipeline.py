@@ -5,15 +5,21 @@ from pathlib import Path
 from celltinder import run_cell_tinder
 from a1_manager import A1Manager, launch_dish_workflow
 from cp_server import ComposeManager
+from gem_logging import configure_logging
 
 from gem_screening.tasks.image_capture import QuitImageCapture, scan_cells
+from gem_screening.utils.env_loader import load_pipeline_env
 from gem_screening.utils.client import cleanup_stale
 from gem_screening.utils.filesystem import create_timestamped_dir
 from gem_screening.utils.identifiers import make_run_id
 from gem_screening.utils.prompts import prompt_to_continue, FOCUS_PROMPT
 from gem_screening.well_data.well_classes import Well
 
+# Load all the environment variables and configure logging
+load_pipeline_env()
+configure_logging()
 
+# Set up logging
 logger = logging.getLogger(__name__)
 
 ################# Main Function #################
@@ -23,6 +29,8 @@ def complete_pipeline(settings: dict[str, any]) -> None:
     Args:
         settings (dict): Dictionary containing all the settings for the pipeline.
     """
+    
+    
     with ComposeManager():
         # Initialise mm and set up microscope
         a1_manager = A1Manager(**settings['aquisition_settings'])

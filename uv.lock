@@ -11,6 +11,7 @@ name = "a1-manager"
 version = "0.1.0"
 source = { editable = "../A1_manager" }
 dependencies = [
+    { name = "gem-logging" },
     { name = "matplotlib" },
     { name = "opencv-python" },
     { name = "pycromanager" },
@@ -21,6 +22,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "gem-logging", editable = "../GEM_Logging" },
     { name = "matplotlib", specifier = ">=3.10.1" },
     { name = "opencv-python", specifier = ">=4.11.0.86" },
     { name = "pycromanager", specifier = ">=1.0.1" },
@@ -302,6 +304,7 @@ version = "0.1.0"
 source = { editable = "../CP_server" }
 dependencies = [
     { name = "celery" },
+    { name = "gem-logging" },
     { name = "numpy" },
     { name = "redis" },
 ]
@@ -311,6 +314,7 @@ requires-dist = [
     { name = "celery", specifier = ">=5.4.0" },
     { name = "cellpose", marker = "extra == 'celery'", specifier = ">=3.1.0" },
     { name = "fastapi", marker = "extra == 'api'", specifier = ">=0.115.11" },
+    { name = "gem-logging", editable = "../GEM_Logging" },
     { name = "numba", marker = "extra == 'celery-default'", specifier = ">=0.61.0" },
     { name = "numpy", specifier = "<2.0.0" },
     { name = "redis", specifier = ">=5.2.1" },
@@ -432,6 +436,17 @@ wheels = [
 ]
 
 [[package]]
+name = "gem-logging"
+version = "0.1.0"
+source = { editable = "../GEM_Logging" }
+dependencies = [
+    { name = "dotenv" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "dotenv", specifier = ">=0.9.9" }]
+
+[[package]]
 name = "gem-screening"
 version = "0.1.0"
 source = { editable = "." }
@@ -440,6 +455,7 @@ dependencies = [
     { name = "celltinder" },
     { name = "cp-server" },
     { name = "dotenv" },
+    { name = "gem-logging" },
     { name = "progress-bar" },
 ]
 
@@ -449,6 +465,7 @@ requires-dist = [
     { name = "celltinder", editable = "../CellTinder" },
     { name = "cp-server", editable = "../CP_server" },
     { name = "dotenv", specifier = ">=0.9.9" },
+    { name = "gem-logging", editable = "../GEM_Logging" },
     { name = "progress-bar", editable = "../Progress_bar" },
 ]
 
