@@ -124,3 +124,10 @@ if __name__ == '__main__':
     'preset_control': {'optical_configuration': 'RFP', # Channel for control after light stimulation
                         'intensity': 40},
     }
+    
+    from time import sleep
+    
+    with ComposeManager():
+        print("Starting the complete pipeline...")
+        sleep(2)  # Simulate some startup delay
+        print("Pipeline started successfully.")
