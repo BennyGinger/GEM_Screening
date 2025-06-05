@@ -47,6 +47,10 @@ def load_pipeline_env(
         raise FileNotFoundError(
             f".env not found; template created at {env_path}. Please update it and rerun.")
 
+    # Ensure the .env file is writable
+    if not os.access(env_path, os.W_OK):
+        raise PermissionError(f"Cannot write to {env_path!r}")
+    
     load_dotenv(env_path, override=False)
 
     # set FASTAPI_BASE_URL

@@ -1,55 +1,54 @@
-import logging
-from logging.handlers import RotatingFileHandler
 import os
-from pathlib import Path
+import logging.config
 
-HOST_LOG_FOLDER = os.getenv("HOST_LOG_FOLDER", "./logs")
-LOGFILE_NAME = os.getenv("LOGFILE_NAME", "gem_screening.log")
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
-SERVICE_NAME = "gem_screening"
+from gem_screening.config import HOST_LOG_FOLDER
 
-MAX_BYTES = 10 * 1024 * 1024  # 10 MB
-BACKUP_COUNT = 3  # Keep 3 backup files
 
-def _configure_logger() -> None:
-    """
-    Configure the root logger so that:
-        - Matches the LOG_LEVEL environment variable throughout the pipeline
-        - Both servers FastAPI and Celery log to the same file
-    """
-    logfile = Path(HOST_LOG_FOLDER).joinpath(LOGFILE_NAME)
+LOGFILE_NAME    = os.getenv("LOGFILE_NAME", "gem_screening.log")
+LOG_LEVEL       = os.getenv("LOG_LEVEL", "INFO").upper()
+SERVICE_NAME    = "gem_screening"
 
-    root = logging.getLogger()  # or use a named logger if you prefer
-    root.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
+MAX_BYTES    = 10 * 1024 * 1024  # 10 MB
+BACKUP_COUNT = 3
 
-    handlers = [type(h) for h in root.handlers]
+# Ensure the folder exists before configuring handlers:
+LOGFILE_PATH = HOST_LOG_FOLDER.joinpath(LOGFILE_NAME)
 
-    # 1) Ensure there's a StreamHandler (so you see FastAPI logs in docker logs)
-    if logging.StreamHandler not in handlers:
-        sh = logging.StreamHandler()  # defaults to stdout
-        fmt = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-        datefmt = "%Y-%m-%d %H:%M:%S"
-        sh.setFormatter(logging.Formatter(fmt=fmt, datefmt=datefmt))
-        root.addHandler(sh)
+logging.config.dictConfig({
+    "version": 1,
+    "disable_existing_loggers": False,
 
-    # 2) Ensure there's a FileHandler writing to /app/logs/fastapi_combined.log
-    if not any(isinstance(h, logging.FileHandler) for h in root.handlers):
-        rfh = RotatingFileHandler(
-                                  filename=str(logfile),
-                                  maxBytes=MAX_BYTES,
-                                  backupCount=BACKUP_COUNT,
-                                  encoding="utf-8",)  # opens in 'a' mode by default
-        fmt = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-        datefmt = "%Y-%m-%d %H:%M:%S"
-        rfh.setFormatter(logging.Formatter(fmt=fmt, datefmt=datefmt))
-        root.addHandler(rfh)
-        
-def get_logger(name: str = None) -> logging.Logger:
-    """
-    Get a logger with the specified name, or the root logger if no name is provided.
-    The logger will be configured to log to both stdout and a file.
-    """
-    _configure_logger()  # Ensure logging is set up before returning the logger
+    "formatters": {
+        "standard": {
+            "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            "datefmt": "%Y-%m-%d %H:%M:%S",
+        },
+    },
+
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "standard",
+            "level": LOG_LEVEL,
+        },
+        "rotating_file": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "formatter": "standard",
+            "level": LOG_LEVEL,
+            "filename": LOGFILE_PATH,
+            "mode": "a",
+            "maxBytes": MAX_BYTES,
+            "backupCount": BACKUP_COUNT,
+            "encoding": "utf-8",
+        },
+    },
+
+    "root": {
+        "handlers": ["console", "rotating_file"],
+        "level": LOG_LEVEL,
+    },
+})
+
+def get_logger(name: str | None = None) -> logging.Logger:
     base = SERVICE_NAME
     return logging.getLogger(f"{base}.{name}") if name else logging.getLogger(base)
-

@@ -2,15 +2,7 @@ from __future__ import annotations
 
 from a1_manager import A1Manager, launch_dish_workflow
 
-# Load environment variables from .env file
-from gem_screening.config import ROOT_DIR, HOST_LOG_FOLDER
-from gem_screening.utils.env_loader import load_pipeline_env
-load_pipeline_env(ROOT_DIR, host_log_folder=str(HOST_LOG_FOLDER))
-
-# Set up logging
 from gem_screening.logger import get_logger
-logger = get_logger(__name__)
-
 from gem_screening.tasks.image_capture import QuitImageCapture, scan_cells
 from gem_screening.utils.client import cleanup_stale
 from gem_screening.utils.filesystem import create_timestamped_dir
@@ -18,6 +10,9 @@ from gem_screening.utils.identifiers import make_run_id
 from gem_screening.utils.prompts import prompt_to_continue, FOCUS_PROMPT
 from gem_screening.well_data.well_classes import Well
 
+
+# Set up logging
+logger = get_logger(__name__)
 
 ################# Main Function #################
 def complete_pipeline(settings: dict[str, any]) -> None:
