@@ -51,7 +51,7 @@ def load_pipeline_env(
     if not os.access(env_path, os.W_OK):
         raise PermissionError(f"Cannot write to {env_path!r}")
     
-    load_dotenv(env_path, override=False)
+    load_dotenv(env_path, override=True)
 
     # set FASTAPI_BASE_URL
     if fastapi_url:

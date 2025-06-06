@@ -63,12 +63,13 @@ def complete_pipeline(settings: dict[str, any]) -> None:
 
 
 if __name__ == '__main__':
-    
+    from time import sleep
     def fake_main():
         # Lazy import to make sure all env vars are set before importing
         from cp_server import ComposeManager
-        with ComposeManager():
+        with ComposeManager(stream_log=False):
             print("Starting the complete pipeline...")
-            resp = input("Press Enter to continue or Ctrl+C to exit...")
+            # resp = input("Press Enter to continue or Ctrl+C to exit...")
+            sleep(10)
             print("Pipeline started successfully.")
     fake_main()
