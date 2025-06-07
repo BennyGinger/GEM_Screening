@@ -67,7 +67,7 @@ if __name__ == '__main__':
     def fake_main():
         # Lazy import to make sure all env vars are set before importing
         from cp_server import ComposeManager
-        with ComposeManager(stream_log=False):
+        with ComposeManager():
             print("Starting the complete pipeline...")
             # resp = input("Press Enter to continue or Ctrl+C to exit...")
             sleep(10)
