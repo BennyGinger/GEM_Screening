@@ -1,6 +1,10 @@
 import logging
+import time
+from typing import Any
 import requests
 import os
+
+from progress_bar import get_corresponding_tqdm
 
 from gem_screening.utils.identifiers import HOST_PREFIX
 
@@ -26,7 +30,7 @@ def cleanup_stale() -> None:
     data = resp.json()
     logger.info(f"Cleanup removed {data['deleted']} stale keys for {HOST_PREFIX}")
 
-def start_processing(run_id: str, payload: dict) -> tuple[str, list[str]]:
+def start_processing(payload: dict[str, Any]) -> tuple[str, list[str]]:
     """
     Call the /process endpoint to launch Celery jobs.
     Under the hood it will send tasks to the Celery worker to process images.
@@ -38,12 +42,62 @@ def start_processing(run_id: str, payload: dict) -> tuple[str, list[str]]:
         tuple[str, list[str]]: A tuple containing the run_id and a list of task IDs.
     """
     url = f"{BASE_URL}/process"
-    body = {**payload, "run_id": run_id}
-    resp = requests.post(url, json=body, timeout=10)
+    resp = requests.post(url, json=payload, timeout=10)
     resp.raise_for_status()
     data = resp.json()
     logger.info(f"Enqueued {data['count']} tasks under run_id {data['run_id']}")
     return data["run_id"], data["task_ids"]
+
+def wait_for_completion(run_id: str,
+                        poll_interval: float = 1.) -> None:
+    """
+    Polls GET {base_url}/process/{run_id}/status until it returns "finished".
+    Displays a progress bar based on the 'remaining' count.
+    """
+    status_url = f"{BASE_URL}/process/{run_id}/status"
+    total = None
+    remaining = None
+
+    # First poll to bootstrap the bar
+    logger.info(f"Checking status of run {run_id}...")
+    resp = requests.get(status_url, timeout=10)
+    resp.raise_for_status()
+    data = resp.json()
+    if data['status'] == 'finished':
+        logger.info(f"Run {run_id} already finished.")
+        return
+
+    total = data['remaining']
+    remaining = total
+    tqdm_ins = get_corresponding_tqdm()
+    pbar = tqdm_ins(total=total, desc=f"Run {run_id}", unit="fov")
+
+    try:
+        while True:
+            time.sleep(poll_interval)
+            resp = requests.get(status_url, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+
+            if data['status'] == 'processing':
+                new_rem = data['remaining']
+                # How many got done since last poll?
+                done = remaining - new_rem
+                if done > 0:
+                    pbar.update(done)
+                    remaining = new_rem
+            elif data['status'] == 'finished':
+                # finish out the bar
+                pbar.update(remaining)
+                break
+            else:
+                raise RuntimeError(f"Unknown status: {data['status']}")
+    finally:
+        pbar.close()
+
+    logger.info(f"Run {run_id} completed.")
+
+
 
 if __name__ == "__main__":
     print(BASE_URL)

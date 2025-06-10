@@ -93,6 +93,7 @@ class Well:
     Class to store the information of a well. Contains the paths to the different images and masks folders, as well as the list of field of views objects, which contains the coordinates of all field of views in the well, as well as the paths of all the image/mask files associated with each field of view.
     Attributes:
         run_dir (Path): Path to the main run directory.
+        run_id (str): Unique identifier for the run, composed of the hostname and an uuid.
         well_grid (dict[int, StageCoord]): Dictionary mapping field of view instance numbers to their coordinates.
         well (str): Well name.
         well_dir (Path): Path to the well directory.
@@ -103,6 +104,7 @@ class Well:
         fov_obj_list (list[FieldOfView]): List of FieldOfView objects associated with the well.
     """
     run_dir: Path
+    run_id: str
     well_grid: dict[int, StageCoord]
     well: str
     well_dir: Path = field(init=False)

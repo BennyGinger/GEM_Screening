@@ -4,7 +4,7 @@ from a1_manager import A1Manager, launch_dish_workflow
 
 from gem_screening.logger import get_logger
 from gem_screening.tasks.image_capture import QuitImageCapture, scan_cells
-from gem_screening.utils.client import cleanup_stale
+from gem_screening.utils.client import cleanup_stale, wait_for_completion
 from gem_screening.utils.filesystem import create_timestamped_dir
 from gem_screening.utils.identifiers import make_run_id
 from gem_screening.utils.prompts import prompt_to_continue, FOCUS_PROMPT
@@ -47,14 +47,16 @@ def complete_pipeline(settings: dict[str, any]) -> None:
         for well, well_grid in dish_grid.items():
             # Create a well object
             well_obj = Well(run_dir=run_dir,
+                            run_id=run_id,
                             well_grid=well_grid,
                             well_name=well)
             
             # Scan cells
             try:
-                # TODO: add the process call to scan_cells
+                # Scan cells in the well, images will then be sent to the server for processing
                 scan_cells(well_obj, settings, a1_manager)
-            
+                # Wait for processing to complete, this will block until all celery tasks are done.
+                wait_for_completion(run_id)
             except QuitImageCapture:  
                 logger.info("User chose to quit the image capture process.")
                 break
