@@ -1,13 +1,23 @@
 from __future__ import annotations
+from collections import defaultdict
 from dataclasses import dataclass, field
 import json
 from pathlib import Path
 import shutil
-from typing import Optional
 
 from a1_manager import StageCoord
+import numpy as np
+import tifffile as tiff
 
+from gem_screening.utils.identifiers import parse_image_filename, parse_category_instance
 from gem_screening.utils.serializers import CustomJSONEncoder, custom_decoder
+
+
+IMG_FOLDER = "images"
+MASK_FOLDER = "masks"
+DEFAULT_CATEGORIES = ['measure', 'refseg', 'mask', 'control', 'stim']
+IMG_CAT = ['measure', 'refseg', 'control']
+MASK_CAT = ['mask', 'stim']
 
 
 @dataclass(slots=True)
@@ -15,60 +25,94 @@ class FieldOfView:
     """
     Class to store the information of a field of view. Contains the coordinates of the field of view and all the paths to the different images and masks. Also, hold a state to know if the field of view contains positive cells or not.
     Attributes:
+        well_dir (Path): Path to the well directory.
         fov_coord (StageCoord): Coordinates of the field of view.
-        well (str): Well name.
         instance (int): Instance number of the field of view.
         contain_positive_cell (bool): Flag to indicate if the field of view contains positive cells.
-        fov_ID (str): ID of the field of view.
+        fov_ID (str): ID of the field of view. Format is "<well_name>P<instance-number>".
         images_path (dict[str, Path]): Dictionary mapping image file names to their paths.
         masks_path (dict[str, Path]): Dictionary mapping mask file names to their paths.
     """
+    well_dir: Path
     fov_coord: StageCoord
-    well: str
     instance: int
     contain_positive_cell: bool = True
     fov_ID: str = field(init=False)
-    # Images files mapping: file name -> path
-    images_path: dict[str, Path] = field(default_factory=dict)
-    masks_path: dict[str, Path] = field(default_factory=dict)
+    # Images and masks files mapping
+    tiff_paths: dict[str, list[Path]] = field(init=False,
+                                                default_factory=lambda: defaultdict(list))
     
     def __post_init__(self)-> None:
-        self.fov_ID = f"{self.well}_P{self.instance}"
+        self.fov_ID = f"{self.well}P{self.instance}"
     
-    def add_image(self, img_name: str, img_path: Path)-> None:
+    def _bild_file_path(self, file_name: str) -> Path:
         """
-        Add an image path to the field of view.
+        Build the file path for the image or mask based on the file name.
         Args:
-            img_name (str): Name of the image file.
-            img_path (Path): Path to the image file.
+            file_name (str): Name of the file. It should be in the format `"<category>_<instance-number>"`.
+        Returns:
+            Path: The complete path to the file.
+        Raises:
+            ValueError: If the file name does not match the expected format or if the category is invalid.
         """
-        self.images_path[img_name] = img_path
+        cat = parse_category_instance(file_name)[0]
+        if cat not in DEFAULT_CATEGORIES:
+            raise ValueError(f"Invalid category '{cat}' in file name '{file_name}'. Expected one of {DEFAULT_CATEGORIES}")
+        
+        if cat in IMG_CAT:
+            return self.img_dir.joinpath(f"{self.fov_ID}_{file_name}.tif")
+        return self.mask_dir.joinpath(f"{self.fov_ID}_{file_name}.tif")
     
-    def add_mask(self, mask_name: str, mask_path: Path)-> None:
+    def register_tiff_file(self, file_name: str)-> Path:
         """
-        Add a mask path to the field of view.
+        Register an image or mask file path to the field of view object. The file will be registered as a TIFF file in the appropriate directory based on its category.
         Args:
-            mask_name (str): Name of the mask file.
-            mask_path (Path): Path to the mask file.
+            file_name (str): Name of the image or mask file. It should be in the format `"<category>_<instance-number>"`.
+        Returns:
+            Path: The complete path of the registered file.
         """
-        self.masks_path[mask_name] = mask_path
+        file_path = self._bild_file_path(file_name)
+        category = parse_image_filename(file_path)[1]
+        self.tiff_paths[category].append(file_path)
+        return file_path
     
-    def get_image_path(self, img_name: str)-> Optional[Path]:
+    def load_images(self, category: str) -> list[np.ndarray]:
         """
-        Get the path of an image file.
+        Load all images of a specific category for this field of view. 
         Args:
-            img_name (str): Name of the image file.
+            category (str): The category of images to load. Should be one of the categories defined in `DEFAULT_CATEGORIES`.
+        Returns:
+            list[np.ndarray]: List of images loaded from the TIFF files in the specified category.
+        Raises:
+            ValueError: If the category is not valid or if no images are found for the specified category.
         """
-        return self.images_path.get(img_name, None)
-    
-    def get_mask_path(self, mask_name: str)-> Optional[Path]:
-        """
-        Get the path of a mask file.
-        Args:
-            mask_name (str): Name of the mask file.
-        """
-        return self.masks_path.get(mask_name, None)
+        if category not in DEFAULT_CATEGORIES:
+            raise ValueError(f"Invalid category '{category}'. Expected one of {DEFAULT_CATEGORIES}")
+        return [tiff.imread(p) for p in sorted(self.tiff_paths.get(category, []))]
 
+    @property
+    def well(self) -> str:
+        """
+        Get the well name.
+        Returns:
+            str: The well name.
+        """
+        return self.well_dir.name.split('_')[0]
+    
+    @property
+    def img_dir(self) -> Path:
+        """
+        Get the path to the images directory of this FOV.
+        """
+        return self.well_dir.joinpath(IMG_FOLDER)
+
+    @property
+    def mask_dir(self) -> Path:
+        """
+        Get the path to the masks directory of this FOV.
+        """
+        return self.well_dir.joinpath(MASK_FOLDER)
+    
     @classmethod
     def from_dict(cls: "FieldOfView", data: dict) -> "FieldOfView":
         """
@@ -81,9 +125,10 @@ class FieldOfView:
         # exactly the same “bypass __init__” logic as you had in from_json
         obj = object.__new__(cls)
         obj.__dict__.update(data)
-        # recompute the ID if it wasn’t in the payload
-        if "fov_ID" not in data:
-            obj.fov_ID = f"{obj.well}_P{obj.instance}"
+        # recompute the ID, just in case it was not set
+        obj.fov_ID = f"{obj.well}P{obj.instance}"
+        # always wrap the loaded dict so we regain defaultdict(list) behavior. Will preserve all previous inserted paths.
+        obj.tiff_paths = defaultdict(list, obj.tiff_paths)
         return obj
 
    
@@ -116,17 +161,14 @@ class Well:
     
     def __post_init__(self)-> None:
         # Setup the main well directory
-        self.well_dir = self.run_dir.joinpath(f"{self.well}_Well")
-        self.well_dir.mkdir(parents=True, exist_ok=True)
+        self.well_dir = self._setup_dir(self.run_dir, 'Well')
         self._reset_folder()
-        
+        # Setup the configuration directory.
+        self.config_dir = self._setup_dir(self.well_dir, 'config')
         # Setup fresh images and masks directories.
-        self.config_dir = self.well_dir.joinpath(f"{self.well}_config")
-        self.config_dir.mkdir(parents=True, exist_ok=True)
-        self.img_dir = self.well_dir.joinpath(f"{self.well}_images")
-        self.img_dir.mkdir(parents=True, exist_ok=True)
-        self.mask_dir = self.well_dir.joinpath(f"{self.well}_masks")
-        self.mask_dir.mkdir(parents=True, exist_ok=True)
+        self.img_dir = self._setup_dir(self.well_dir, 'images')
+        self.mask_dir = self._setup_dir(self.well_dir, 'masks')
+        # Setup the CSV file path for cell data.
         self.csv_path = self.well_dir.joinpath(f"{self.well}_cell_data.csv")
         
         # Unpack the field of view objects
@@ -134,6 +176,17 @@ class Well:
             
         # Save the well object to a JSON file
         self.to_json()
+
+    def _setup_dir(self, root_path: Path, new_dir_name: str) -> Path:
+        """
+        Setup new directory.
+        Args:
+            root_path (Path): Path to the root directory where the well folder will be created.
+            new_dir_name (str): Name of the new directory to be created.
+        """
+        new_dir = root_path.joinpath(f"{self.well}_{new_dir_name}")
+        new_dir.mkdir(parents=True, exist_ok=True)
+        return new_dir
         
     def _reset_folder(self)-> None:
         """
@@ -158,7 +211,7 @@ class Well:
         """
         Unpack the field of view objects from the well grid.
         """
-        return [FieldOfView(coord, self.well, i) for i, coord in sorted(self.well_grid.items())]
+        return [FieldOfView(self.well_dir, coord, i) for i, coord in sorted(self.well_grid.items())]
     
     @property
     def positive_fovs(self)-> list[FieldOfView]:

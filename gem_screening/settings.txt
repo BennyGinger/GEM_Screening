@@ -1,4 +1,4 @@
-# Load settings
+# TODO: Build settings as class or dataclass model
 settings = {
 # savedir for images
 'savedir': r'D:\Ben',
@@ -31,7 +31,7 @@ settings = {
                 'intensity': 5}, # 0-100%
 
 # Segmetation settings
-'cellpose': {'diameter': 40, 
+'server': {'diameter': 40, 
                 'flow_threshold': 1, 
                 'cellprob_threshold': 0}, # Cellpose settings 10x: 20-25, 20x: 40-50, tried 20 with 10x and it seemed perfect - Boldi
 

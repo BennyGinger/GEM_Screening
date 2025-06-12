@@ -1,3 +1,4 @@
+from dataclasses import asdict, dataclass
 import logging
 import time
 from typing import Any
@@ -6,6 +7,7 @@ import os
 
 from progress_bar import get_corresponding_tqdm
 
+from gem_screening.utils.client.models import BackgroundPayload, ProcessPayload
 from gem_screening.utils.identifiers import HOST_PREFIX
 
 
@@ -30,23 +32,35 @@ def cleanup_stale() -> None:
     data = resp.json()
     logger.info(f"Cleanup removed {data['deleted']} stale keys for {HOST_PREFIX}")
 
-def start_processing(payload: dict[str, Any]) -> tuple[str, list[str]]:
+def submit_bg_subtraction(payload: BackgroundPayload) -> None:
+    """
+    Call the /process_bg_sub endpoint to launch Celery jobs for background subtraction.
+    Args:
+        payload (BackgroundPayload): The payload containing the background subtraction parameters.
+    Returns:
+        None
+    """
+    url = f"{BASE_URL}/process_bg_sub"
+    resp = requests.post(url, json=asdict(payload), timeout=10)
+    resp.raise_for_status()
+    data = resp.json()
+    logger.info(f"Enqueued {data['count']} tasks for background subtraction.")
+
+def submit_full_processing(payload: ProcessPayload) -> None:
     """
     Call the /process endpoint to launch Celery jobs.
     Under the hood it will send tasks to the Celery worker to process images.
     Images will be background subtracted, denoised (if needed), segmented, and tracked (using IoU).
     Args:
-        run_id (str): Unique identifier for the processing run.
-        payload (dict): Dictionary containing the image processing parameters.
+        payload (ProcessPaylaod): The payload containing the image processing parameters.
     Returns:
         tuple[str, list[str]]: A tuple containing the run_id and a list of task IDs.
     """
     url = f"{BASE_URL}/process"
-    resp = requests.post(url, json=payload, timeout=10)
+    resp = requests.post(url, json=asdict(payload), timeout=10)
     resp.raise_for_status()
     data = resp.json()
     logger.info(f"Enqueued {data['count']} tasks under run_id {data['run_id']}")
-    return data["run_id"], data["task_ids"]
 
 def wait_for_completion(run_id: str,
                         poll_interval: float = 1.) -> None:

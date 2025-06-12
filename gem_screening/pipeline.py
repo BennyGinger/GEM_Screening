@@ -4,7 +4,7 @@ from a1_manager import A1Manager, launch_dish_workflow
 
 from gem_screening.logger import get_logger
 from gem_screening.tasks.image_capture import QuitImageCapture, scan_cells
-from gem_screening.utils.client import cleanup_stale, wait_for_completion
+from gem_screening.utils.client.client import cleanup_stale, wait_for_completion
 from gem_screening.utils.filesystem import create_timestamped_dir
 from gem_screening.utils.identifiers import make_run_id
 from gem_screening.utils.prompts import prompt_to_continue, FOCUS_PROMPT
