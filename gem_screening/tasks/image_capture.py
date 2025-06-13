@@ -7,7 +7,7 @@ from a1_manager import A1Manager
 from progress_bar import setup_progress_monitor as progress_bar
 
 from gem_screening.utils.client.client import submit_full_processing, submit_bg_subtraction
-from gem_screening.utils.client.models import build_process_payload, build_bg_sub_payload
+from gem_screening.utils.client.models import build_payload
 from gem_screening.utils.filesystem import imwrite_atomic
 from gem_screening.utils.identifiers import parse_category_instance
 from gem_screening.utils.prompts import prompt_to_continue, ADD_LIGAND_PROMPT
@@ -15,7 +15,6 @@ from gem_screening.well_data.well_classes import FieldOfView, Well
 
 
 logger = logging.getLogger(__name__)
-# FIXME: I don't think I need the round number here, I can extract it from the img_path
 def scan_cells(well_obj: Well, settings: dict[str, Any], a1_manager: A1Manager) -> None:
     """
     Main function to scan cells in a well. It takes images of all the field of views in the well and saves them.
@@ -59,10 +58,8 @@ def _image_all_fov(well_obj: Well, a1_manager: A1Manager, settings: dict[str, An
         settings (dict): Dictionary containing the settings for the imaging.
         imaging_loop (str): The imaging loop label to use for the acquisition. Expected format is `"<category>_<instance>"`.
     """
-    # Whether to use a channel just for segmentation, otherwise fall back on the measurement channel
+    # Setup the imaging loop
     use_refseg: bool = settings['refseg']
-    
-    # Settup imaging preset
     if 'measure' in imaging_loop:
         input_preset = settings['preset_measure']
         
@@ -74,11 +71,12 @@ def _image_all_fov(well_obj: Well, a1_manager: A1Manager, settings: dict[str, An
         input_preset_refseg = settings['preset_refseg']
         imaging_loop_refseg = f"refseg_{parse_category_instance(imaging_loop)[1]}"
     
-    # Setup the imaging loop
+    server_settings: dict[str, Any] = settings['server']
     fov_lst = well_obj.positive_fovs
     total_fovs = len(fov_lst)
-    server_settings: dict[str, Any] = settings['server']
-    round_num = parse_category_instance(imaging_loop)[1]
+    server_settings['run_id'] = well_obj.run_id
+    server_settings['dst_folder'] = well_obj.mask_dir
+    server_settings['total_fovs'] = total_fovs
     
     partial_take_image_fov = partial(
         _take_image_fov,
@@ -95,7 +93,9 @@ def _image_all_fov(well_obj: Well, a1_manager: A1Manager, settings: dict[str, An
         
         if use_refseg:
             # Send the `measure` image for bg processing
-            bg_payload = build_bg_sub_payload(img_path=img_path, server_settings=server_settings)
+            bg_payload = build_payload(img_path=img_path,
+                                       server_settings=server_settings,
+                                       bg_only=True)
             submit_bg_subtraction(bg_payload)
                                               
             # Overwrite the `measure` img_path with the `refseg` image path
@@ -104,13 +104,9 @@ def _image_all_fov(well_obj: Well, a1_manager: A1Manager, settings: dict[str, An
                                    imaging_loop=imaging_loop_refseg)
         
         # Send the `measure` or `refseg` to full processing
-        full_payload = build_process_payload(
-            img_path=img_path,
-            server_settings=server_settings,
-            run_id=fov_obj.run_id,
-            round_num=round_num,
-            dst_folder=fov_obj.mask_dir,
-            total_fovs=total_fovs)
+        full_payload = build_payload(img_path=img_path,
+                                     server_settings=server_settings,
+                                     )
         submit_full_processing(full_payload)
 
 class QuitImageCapture:

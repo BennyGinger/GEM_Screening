@@ -1,25 +1,21 @@
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any
+from typing import Any, Union
 
 
 BG_SETS = {"sigma": 0.0,
-               "size": 7,}
+           "size": 7,}
 
-CP_SETS = {"channels": None,
+CP_SETS = {"do_denoise": True,
+               "model_type": "cyto2",
+               "restore_type": "denoise_cyto2",
+               "gpu": True,
+               "channels": None,
                "diameter": 60,
                "flow_threshold": 0.4,
                "cellprob_threshold": 0.0,
                "z_axis": None,
                "do_3D": False,
                "3D_stitch_threshold": 0,}
-
-MOD_SETS = {"model_type": "cyto2",
-                "restore_type": "denoise_cyto2",
-                "gpu": True,}
-
-SERVER_SETS = {"do_denoise": True,
-                "track_stitch_threshold": 0.75}
 
 @dataclass
 class BackgroundPayload():
@@ -48,80 +44,63 @@ class ProcessPayload(BackgroundPayload):
         size (int): Size parameter for background subtraction.
     
     Attributes:
-        mod_settings (dict[str, Any]): Model settings for Cellpose.
-        cp_settings (dict[str, Any]): Segmentation settings for Cellpose.
+        cellpose_settings (dict): Model and segmentation settings for Cellpose.
         dst_folder (str): Destination folder where processed images will be saved.
-        round (int): The current round of processing (1 or 2).
         run_id (str): Unique identifier for the processing run.
-        total_fovs (int, optional): Total number of fields of view, used in round 2 for tracking.
-        do_denoise (bool, optional): Whether to apply denoising. Defaults to True.
-        track_stitch_threshold (float, optional): Threshold for stitching masks. Defaults to 0.75.
+        total_fovs (int): Total number of fields of view, used to set the number of pending tracks in Redis.
+        track_stitch_threshold (float, optional): Threshold for stitching masks during tracking. Default to 0.75.
+        round (int): The round number for processing, build from the image path if not provided. Defaults to None.
     """
-    mod_settings: dict[str, Any]
-    cp_settings: dict[str, Any]
+    cellpose_settings: dict[str, Any]
     dst_folder: str
-    round: int
     run_id: str
-    total_fovs: int = None
-    do_denoise: bool = True
+    total_fovs: int
     track_stitch_threshold: float = 0.75
-    
-def build_process_payload(img_path: str | list[str], 
+    round: int = None
+
+def build_payload(img_path: str, 
                    server_settings: dict[str, Any],
-                   run_id: str, 
-                   round_num: int, 
-                   dst_folder: Path,
-                   total_fovs: int,
-                   ) -> ProcessPayload:
+                   *,
+                   bg_only: bool = False,
+                   ) -> BackgroundPayload | ProcessPayload:
     """
     Build the payload for the image processing request.
     Args:
-        img_path (str | list[str]): Path to the image file, a directory or a list of image paths.
-        server_settings (dict[str, Any]): Settings for the server, including model and segmentation settings, as well as background settings and tracking parameters.
-        run_id (str): Unique identifier for the processing run.
-        round_num (int): The round number for processing.
-        dst_folder (Path): Destination folder where processed images will be saved.
-        total_fovs (int): Total number of fields of view.
+        img_path (str): Path to the image file.
+        server_settings (dict[str, Any]): Settings for the server, including background subtraction, segmentation and tracking parameters.
+        bg_only (bool): If True, only build the background settings payload. Defaults to False.
     Returns:
-        ProcessPayload: The payload containing the image processing parameters.
+        (BackgroundPayload | ProcessPayload): The payload containing the image processing parameters.
     """
-    # Default parameters for the payload
-    cp_sets = CP_SETS.copy()
-    mod_sets = MOD_SETS.copy()
-    server_sets = SERVER_SETS.copy()
+    # build the background settings payload
     bg_sets = BG_SETS.copy()
     
-    # Extract the model and cellpose settings from the input settings
-    for settings in (cp_sets, mod_sets, server_sets, bg_sets):
-        # pick out only the overrides that belong in this dict
-        overrides = {k: v for k, v in server_settings.items() if k in settings}
-        settings.update(overrides)
+    if bg_only:
+        override = {k: v for k, v in server_settings.items() if k in bg_sets}
+        bg_sets.update(override)
+        return BackgroundPayload(img_path=img_path, **bg_sets)
+    
+    # Otherwise, build the full processing payload
+    cp_sets = CP_SETS.copy()
+    track_stitch_threshold = server_settings.pop("track_stitch_threshold", 0.75)
+    # These parameters will raise an error in the pydantic model if not provided
+    run_id = server_settings.pop("run_id", "UnknownRunID")
+    dst_folder = server_settings.pop("dst_folder", "UnknownFolder")
+    total_fovs = server_settings.pop("total_fovs", "UnknownTotalFOVs")
+    
+    # Extract the different settings parameters
+    for sets in (bg_sets, cp_sets):
+        overrides = {k: v for k, v in server_settings.items() if k in sets}
+        sets.update(overrides)
     
     # Build the payload
     return ProcessPayload(img_path=img_path,
-                          mod_settings=mod_sets,
-                          cp_settings=cp_sets,
                           dst_folder=str(dst_folder),
-                          round=round_num,
                           run_id=run_id,
                           total_fovs=total_fovs,
-                          **server_sets,  # Unpack server settings
-                          **bg_sets)  # Unpack background settings if provided
+                          track_stitch_threshold=track_stitch_threshold,
+                          cellpose_settings=cp_sets,
+                          **bg_sets)
                           
-def build_bg_sub_payload(img_path: str | list[str], 
-                        server_settings: dict[str, Any]) -> BackgroundPayload:
-    """
-    Build the payload for the background subtraction request.
-    Args:
-        img_path (str | list[str]): Path to the image file, a directory or a list of image paths.
-        server_settings (dict[str, Any]): Settings for the server, including background subtraction parameters.
-    Returns:
-        BackgroundPayload: The payload containing the background subtraction parameters.
-    """
-    
-    bg_sets = BG_SETS.copy() 
-    for k, v in server_settings.items():
-        if k in bg_sets:
-            bg_sets[k] = v
-    return BackgroundPayload(img_path=img_path, **bg_sets)
+
 
