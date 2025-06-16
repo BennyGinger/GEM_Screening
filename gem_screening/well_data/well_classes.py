@@ -15,9 +15,9 @@ from gem_screening.utils.serializers import CustomJSONEncoder, custom_decoder
 
 IMG_FOLDER = "images"
 MASK_FOLDER = "masks"
-DEFAULT_CATEGORIES = ['measure', 'refseg', 'mask', 'control', 'stim']
 IMG_CAT = ['measure', 'refseg', 'control']
 MASK_CAT = ['mask', 'stim']
+DEFAULT_CATEGORIES = IMG_CAT + MASK_CAT
 
 
 @dataclass(slots=True)
@@ -37,17 +37,17 @@ class FieldOfView:
     fov_coord: StageCoord
     instance: int
     contain_positive_cell: bool = True
-    fov_ID: str = field(init=False)
+    fov_id: str = field(init=False)
     # Images and masks files mapping
     tiff_paths: dict[str, list[Path]] = field(init=False,
                                                 default_factory=lambda: defaultdict(list))
     
     def __post_init__(self)-> None:
-        self.fov_ID = f"{self.well}P{self.instance}"
+        self.fov_id = f"{self.well}P{self.instance}"
     
-    def _bild_file_path(self, file_name: str) -> Path:
+    def _bild_img_path(self, file_name: str) -> Path:
         """
-        Build the file path for the image or mask based on the file name.
+        Build the file path for the image based on the file name.
         Args:
             file_name (str): Name of the file. It should be in the format `"<category>_<instance-number>"`.
         Returns:
@@ -56,25 +56,32 @@ class FieldOfView:
             ValueError: If the file name does not match the expected format or if the category is invalid.
         """
         cat = parse_category_instance(file_name)[0]
-        if cat not in DEFAULT_CATEGORIES:
-            raise ValueError(f"Invalid category '{cat}' in file name '{file_name}'. Expected one of {DEFAULT_CATEGORIES}")
+        if cat not in IMG_CAT:
+            raise ValueError(f"Invalid category '{cat}' in file name '{file_name}'. Expected one of {IMG_CAT}")
         
-        if cat in IMG_CAT:
-            return self.img_dir.joinpath(f"{self.fov_ID}_{file_name}.tif")
-        return self.mask_dir.joinpath(f"{self.fov_ID}_{file_name}.tif")
+        return self.img_dir.joinpath(f"{self.fov_id}_{file_name}.tif")
     
-    def register_tiff_file(self, file_name: str)-> Path:
+    def register_img_file(self, file_name: str)-> Path:
         """
-        Register an image or mask file path to the field of view object. The file will be registered as a TIFF file in the appropriate directory based on its category.
+        Register an image file path to the field of view object. The file will be registered as a TIFF file in the appropriate directory based on its category.
         Args:
-            file_name (str): Name of the image or mask file. It should be in the format `"<category>_<instance-number>"`.
+            file_name (str): Name of the image file. It should be in the format `"<category>_<instance-number>"`.
         Returns:
             Path: The complete path of the registered file.
         """
-        file_path = self._bild_file_path(file_name)
+        file_path = self._bild_img_path(file_name)
         category = parse_image_filename(file_path)[1]
         self.tiff_paths[category].append(file_path)
         return file_path
+    
+    def register_existing_tiff(self, path: Path) -> None:
+        """
+        Register an existing TIFF file path to the field of view object. The file will be registered based on its category extracted from the file name.
+        Args:
+            path (Path): Path to the existing TIFF file.
+        """
+        category = parse_image_filename(path)[1]
+        self.tiff_paths[category].append(path)
     
     def load_images(self, category: str) -> list[np.ndarray]:
         """
@@ -146,7 +153,8 @@ class Well:
         img_dir (Path): Path to the images directory.
         mask_dir (Path): Path to the masks directory.
         csv_path (Path): Path to the CSV file containing cell data.
-        fov_obj_list (list[FieldOfView]): List of FieldOfView objects associated with the well.
+        positive_fovs (list[FieldOfView]): List of FieldOfView objects associated with the well.
+        well_obj_path (Path): Path to the JSON file where the well object is saved.
     """
     run_dir: Path
     run_id: str
@@ -157,7 +165,7 @@ class Well:
     img_dir: Path = field(init=False)
     mask_dir: Path = field(init=False)
     csv_path: Path = field(init=False)
-    fov_obj_list: list[FieldOfView] = field(init=False)
+    _fov_obj_list: list[FieldOfView] = field(init=False)
     
     def __post_init__(self)-> None:
         # Setup the main well directory
@@ -172,7 +180,7 @@ class Well:
         self.csv_path = self.well_dir.joinpath(f"{self.well}_cell_data.csv")
         
         # Unpack the field of view objects
-        self.fov_obj_list = self._unpack_fov()
+        self._fov_obj_list = self._unpack_fov()
             
         # Save the well object to a JSON file
         self.to_json()
@@ -218,7 +226,7 @@ class Well:
         """
         Get the list of field of views that contain positive cells.
         """
-        return [fov for fov in self.fov_obj_list if fov.contain_positive_cell]
+        return [fov for fov in self._fov_obj_list if fov.contain_positive_cell]
     
     @property
     def well_obj_path(self)-> Path:

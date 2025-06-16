@@ -4,6 +4,7 @@ from a1_manager import A1Manager, launch_dish_workflow
 
 from gem_screening.logger import get_logger
 from gem_screening.tasks.image_capture import QuitImageCapture, scan_cells
+from gem_screening.tasks.mask_utils import assign_masks_to_fovs
 from gem_screening.utils.client.client import cleanup_stale, wait_for_completion
 from gem_screening.utils.filesystem import create_timestamped_dir
 from gem_screening.utils.identifiers import make_run_id
@@ -65,7 +66,10 @@ def complete_pipeline(settings: PipelineSettings) -> None:
                 logger.info("User chose to quit the image capture process.")
                 break
             
-            logger.info("Image capture process completed.")
+            # Assign masks to the well's field of views
+            assign_masks_to_fovs(well_obj.positive_fovs, well_obj.mask_dir)
+            
+            logger.info("Image capture process completed and masks assigned successfully.")
 
 
 if __name__ == '__main__':

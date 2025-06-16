@@ -23,7 +23,7 @@ class CustomJSONEncoder(json.JSONEncoder):
                 "run_dir":     obj.run_dir,
                 "well_grid":   obj.well_grid,
                 "well":        obj.well,
-                "fov_obj_list": obj.fov_obj_list,
+                "_fov_obj_list": obj._fov_obj_list,
                 "well_dir":    obj.well_dir,
                 "config_dir":  obj.config_dir,
                 "img_dir":     obj.img_dir,
@@ -42,7 +42,7 @@ class CustomJSONEncoder(json.JSONEncoder):
                 "well":                 obj.well,
                 "instance":             obj.instance,
                 "contain_positive_cell":obj.contain_positive_cell,
-                "fov_ID":               obj.fov_ID,
+                "fov_ID":               obj.fov_id,
                 "images_path":          obj.images_path,    # dict[str, Path]
                 "masks_path":           obj.masks_path}}
 

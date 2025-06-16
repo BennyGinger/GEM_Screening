@@ -144,7 +144,7 @@ def _take_image_fov(fov_obj: FieldOfView, input_preset: PresetMeasure | PresetCo
     img = a1_manager.snap_image()
     
     # Save image
-    img_path = fov_obj.register_tiff_file(imaging_loop)
+    img_path = fov_obj.register_img_file(imaging_loop)
     imwrite_atomic(img_path, img.astype('uint16'))
     logger.info(f"Image saved at {img_path}")
     
