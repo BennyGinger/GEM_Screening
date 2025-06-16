@@ -13,6 +13,7 @@ dependencies = [
     "cp-server",
     "dotenv>=0.9.9",
     "progress-bar",
+    "pydantic>=2.11.6",
 ]
 
 [project.scripts]

@@ -8,6 +8,7 @@ from gem_screening.utils.client.client import cleanup_stale, wait_for_completion
 from gem_screening.utils.filesystem import create_timestamped_dir
 from gem_screening.utils.identifiers import make_run_id
 from gem_screening.utils.prompts import prompt_to_continue, FOCUS_PROMPT
+from gem_screening.utils.settings.models import PipelineSettings, AcquisitionSettings, DishSettings
 from gem_screening.well_data.well_classes import Well
 
 
@@ -15,7 +16,7 @@ from gem_screening.well_data.well_classes import Well
 logger = get_logger(__name__)
 
 ################# Main Function #################
-def complete_pipeline(settings: dict[str, any]) -> None:
+def complete_pipeline(settings: PipelineSettings) -> None:
     """
     Main function to run the complete pipeline for cell imaging and stimulation.
     Args:
@@ -26,10 +27,12 @@ def complete_pipeline(settings: dict[str, any]) -> None:
     
     with ComposeManager():
         # Initialise mm and set up microscope
-        a1_manager = A1Manager(**settings['aquisition_settings'])
+        acqui: AcquisitionSettings = settings.aquisition_settings
+        a1_manager = A1Manager(**acqui.model_dump())
         
         # Initialise pipeline
-        run_dir = create_timestamped_dir(settings['savedir'], settings['savedir_name'])
+        run_dir = create_timestamped_dir(settings.savedir, 
+                                         settings.savedir_name)
         run_id = make_run_id()
         logger.info(f"Created run directory: {run_dir} with run ID: {run_id}")
         
@@ -38,7 +41,8 @@ def complete_pipeline(settings: dict[str, any]) -> None:
             return
         
         # Generate the dish_grid
-        dish_grid = launch_dish_workflow(a1_manager, run_dir, **settings['dish_settings'])
+        dish_sets: DishSettings = settings.dish_settings
+        dish_grid = launch_dish_workflow(a1_manager, run_dir, **dish_sets.model_dump())
         
         # Clean up the redis server
         cleanup_stale()

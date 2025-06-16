@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import Any, Union
 
+from gem_screening.utils.settings.models import ServerSettings
+
 
 BG_SETS = {"sigma": 0.0,
            "size": 7,}
@@ -59,7 +61,7 @@ class ProcessPayload(BackgroundPayload):
     round: int = None
 
 def build_payload(img_path: str, 
-                   server_settings: dict[str, Any],
+                   server_settings: ServerSettings,
                    *,
                    bg_only: bool = False,
                    ) -> BackgroundPayload | ProcessPayload:
@@ -67,30 +69,31 @@ def build_payload(img_path: str,
     Build the payload for the image processing request.
     Args:
         img_path (str): Path to the image file.
-        server_settings (dict[str, Any]): Settings for the server, including background subtraction, segmentation and tracking parameters.
+        server_settings (ServerSettings): The server settings containing parameters for image processing.
         bg_only (bool): If True, only build the background settings payload. Defaults to False.
     Returns:
         (BackgroundPayload | ProcessPayload): The payload containing the image processing parameters.
     """
     # build the background settings payload
-    bg_sets = BG_SETS.copy()
     
+    bg_sets = BG_SETS.copy()
+    settings_dict = server_settings.model_dump()
     if bg_only:
-        override = {k: v for k, v in server_settings.items() if k in bg_sets}
+        override = {k: v for k, v in settings_dict.items() if k in bg_sets}
         bg_sets.update(override)
         return BackgroundPayload(img_path=img_path, **bg_sets)
     
     # Otherwise, build the full processing payload
     cp_sets = CP_SETS.copy()
-    track_stitch_threshold = server_settings.pop("track_stitch_threshold", 0.75)
+    track_stitch_threshold = settings_dict.pop("track_stitch_threshold", 0.75)
     # These parameters will raise an error in the pydantic model if not provided
-    run_id = server_settings.pop("run_id", "UnknownRunID")
-    dst_folder = server_settings.pop("dst_folder", "UnknownFolder")
-    total_fovs = server_settings.pop("total_fovs", "UnknownTotalFOVs")
+    run_id = settings_dict.pop("run_id", "UnknownRunID")
+    dst_folder = settings_dict.pop("dst_folder", "UnknownFolder")
+    total_fovs = settings_dict.pop("total_fovs", "UnknownTotalFOVs")
     
     # Extract the different settings parameters
     for sets in (bg_sets, cp_sets):
-        overrides = {k: v for k, v in server_settings.items() if k in sets}
+        overrides = {k: v for k, v in settings_dict.items() if k in sets}
         sets.update(overrides)
     
     # Build the payload
