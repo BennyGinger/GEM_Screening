@@ -7,6 +7,7 @@ import shutil
 
 from a1_manager import StageCoord
 import numpy as np
+from numpy.typing import NDArray
 import tifffile as tiff
 
 from gem_screening.utils.identifiers import parse_image_filename, parse_category_instance
@@ -83,19 +84,19 @@ class FieldOfView:
         category = parse_image_filename(path)[1]
         self.tiff_paths[category].append(path)
     
-    def load_images(self, category: str) -> list[np.ndarray]:
+    def load_images(self, category: str) -> list[NDArray[np.uint16]]:
         """
         Load all images of a specific category for this field of view. 
         Args:
             category (str): The category of images to load. Should be one of the categories defined in `DEFAULT_CATEGORIES`.
         Returns:
-            list[np.ndarray]: List of images loaded from the TIFF files in the specified category.
+            list[NDArray[np.uint16]]: List of images loaded from the TIFF files in the specified category.
         Raises:
             ValueError: If the category is not valid or if no images are found for the specified category.
         """
         if category not in DEFAULT_CATEGORIES:
             raise ValueError(f"Invalid category '{category}'. Expected one of {DEFAULT_CATEGORIES}")
-        return [tiff.imread(p) for p in sorted(self.tiff_paths.get(category, []))]
+        return [tiff.imread(p).astype(np.uint16) for p in sorted(self.tiff_paths.get(category, []))]
 
     @property
     def well(self) -> str:

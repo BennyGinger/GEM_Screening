@@ -21,14 +21,14 @@ def complete_pipeline(settings: PipelineSettings) -> None:
     """
     Main function to run the complete pipeline for cell imaging and stimulation.
     Args:
-        settings (dict): Dictionary containing all the settings for the pipeline.
+        settings (PipelineSettings): The settings for the pipeline, including acquisition settings, dish settings, and save directory.
     """
     # Lazy import to make sure all env vars are set before importing
     from cp_server import ComposeManager
     
     with ComposeManager():
         # Initialise mm and set up microscope
-        acqui: AcquisitionSettings = settings.aquisition_settings
+        acqui: AcquisitionSettings = settings.acquisition_settings
         a1_manager = A1Manager(**acqui.model_dump())
         
         # Initialise pipeline
@@ -68,8 +68,9 @@ def complete_pipeline(settings: PipelineSettings) -> None:
             
             # Assign masks to the well's field of views
             assign_masks_to_fovs(well_obj.positive_fovs, well_obj.mask_dir)
-            
             logger.info("Image capture process completed and masks assigned successfully.")
+            
+            # Extract the data
 
 
 if __name__ == '__main__':

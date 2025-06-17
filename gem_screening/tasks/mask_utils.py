@@ -5,12 +5,15 @@ from gem_screening.utils.identifiers import parse_image_filename
 from gem_screening.well_data.well_classes import FieldOfView
 
 
+MASK_NAME = 'mask'
+
 # Set up logging
 logger = logging.getLogger(__name__)
 
 def assign_masks_to_fovs(fovs: list[FieldOfView], mask_dir: Path) -> None:
     """
-    Assign masks to each FieldOfView based on the mask files in the specified directory.
+    Assign masks to each FieldOfView based on the mask files in the specified directory. 
+    Each mask file should be in the format '<FOVID>_mask_[1-9].tif'. Any other format will be ignored.
     
     Args:
         fovs (list[FieldOfView]): List of FieldOfView objects to assign masks to.
@@ -25,10 +28,15 @@ def assign_masks_to_fovs(fovs: list[FieldOfView], mask_dir: Path) -> None:
     # Scan the mask directory and group masks by FOV identifier
     for mask_file in mask_dir.glob("*.tif"):
         # Extract the FOV identifier from the mask file name
-        fov_id = parse_image_filename(mask_file)[0]
+        fov_id, cat, _ = parse_image_filename(mask_file)
+        # Check if the FOV identifier is recognized
         if fov_id not in fov_masks:
             logger.warning(f"Mask file {mask_file} has an unrecognized FOV ID: {fov_id}. Skipping.")
             continue
+        # Skip if the category is not 'mask'
+        if cat != MASK_NAME:
+            continue
+        # Append the mask file to the corresponding FOV's list
         fov_masks[fov_id].append(mask_file)
     
     # Check that each key contains the same number of masks
