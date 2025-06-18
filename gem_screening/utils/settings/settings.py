@@ -31,7 +31,6 @@ measure_sets = MeasureSettings(
                                     optical_configuration='GFP',
                                     intensity=25),
                     refseg=True,
-                    refseg_threshold=50,
                     preset_refseg=PresetRefseg(
                                     optical_configuration='iRed',
                                     intensity=5))
@@ -51,6 +50,7 @@ control_sets = ControlSettings(
 
 # Preset settings for light stimulation
 stim_sets = StimSettings(
+                    true_cell_threshold=50,
                     erosion_factor=3,
                     preset=PresetStim(
                                     optical_configuration='BFP',
@@ -62,7 +62,7 @@ stim_sets = StimSettings(
 settings = PipelineSettings(
     savedir=savedir,
     savedir_name=savedir_name,
-    aquisition_settings=aqui_sets,
+    acquisition_settings=aqui_sets,
     dish_settings=dish_sets,
     af_settings=af_sets,
     measure_settings=measure_sets,

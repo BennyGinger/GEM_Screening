@@ -94,7 +94,6 @@ class MeasureSettings(BaseModel):
     Attributes:
         preset_measure (PresetMeasure): Preset settings for imaging.
         refseg (bool, optional): If True, will perform reference segmentation. Defaults to True.
-        refseg_threshold (int, optional): Minimum pixel intensity to be considered as a cell. Defaults to 50.
         preset_refseg (PresetRefseg): Preset settings for reference segmentation.
     
     Notes:
@@ -102,7 +101,6 @@ class MeasureSettings(BaseModel):
     """
     preset_measure: PresetMeasure = PresetMeasure()
     refseg: bool = True
-    refseg_threshold: int = 50
     preset_refseg: PresetRefseg = PresetRefseg()
 
 class ControlSettings(BaseModel):
@@ -121,11 +119,15 @@ class StimSettings(BaseModel):
     """
     Pydantic model for Settings for stimulation masks.
     Attributes:
+        true_cell_threshold (int, optional): Threshold for true cell detection. Below this value, cells are considered noise and set to 0 in the output. Defaults to 50.
+        crop_size (int, optional): Size of the crop for the display of the ROI, for the CellTinder GUI, to select positive cells. Defaults to 251.
         erosion_factor (int, optional): Erosion factor for the stimulation masks to avoid stimulation of neighboring cells. Defaults to 3.
         preset (PresetStim): Preset settings for light stimulation.
     Notes:
         - `PresetStim` contains the optical configuration (str), intensity (%), and exposure time (sec) for light stimulation.
     """
+    true_cell_threshold: int = 50
+    crop_size: int = 251
     erosion_factor: int = 3
     preset: PresetStim = PresetStim()
 
@@ -180,7 +182,7 @@ class PipelineSettings(BaseModel):
     Attributes:
         savedir (str): Directory where images will be saved.
         savedir_name (str): Name of the directory for saving images.
-        acquisition_settings (AquisitionSettings): Settings for the aquisition process.
+        acquisition_settings (AcquisitionSettings): Settings for the aquisition process.
         dish_settings (DishSettings): Settings for the dish used in the imaging process.
         af_settings (AutofocusSettings): Settings for autofocus during the imaging process.
         measure_settings (MeasureSettings): Settings for measurement and reference segmentation.

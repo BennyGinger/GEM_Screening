@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 from a1_manager import A1Manager, launch_dish_workflow
+from celltinder import run_cell_tinder
 
 from gem_screening.logger import get_logger
+from gem_screening.tasks.data_intensity import extract_measure_intensities
 from gem_screening.tasks.image_capture import QuitImageCapture, scan_cells
 from gem_screening.tasks.mask_utils import assign_masks_to_fovs
 from gem_screening.utils.client.client import cleanup_stale, wait_for_completion
 from gem_screening.utils.filesystem import create_timestamped_dir
 from gem_screening.utils.identifiers import make_run_id
 from gem_screening.utils.prompts import prompt_to_continue, FOCUS_PROMPT
-from gem_screening.utils.settings.models import PipelineSettings, AcquisitionSettings, DishSettings
+from gem_screening.utils.settings.models import PipelineSettings, AcquisitionSettings, DishSettings, StimSettings
 from gem_screening.well_data.well_classes import Well
 
 
@@ -71,7 +73,15 @@ def complete_pipeline(settings: PipelineSettings) -> None:
             logger.info("Image capture process completed and masks assigned successfully.")
             
             # Extract the data
+            stim_sets: StimSettings = settings.stim_settings
+            extract_measure_intensities(well_obj.positive_fovs,
+                             true_cell_threshold=stim_sets.true_cell_threshold,
+                             csv_path=well_obj.csv_path,)
+            logger.info(f"Data extraction completed for well: {well_obj.well_name}")
 
+            # Run the cell tinder GUI
+            run_cell_tinder(well_obj.csv_path,
+                            crop_size=stim_sets.crop_size)
 
 if __name__ == '__main__':
     from time import sleep
