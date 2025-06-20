@@ -24,6 +24,7 @@ FOV_X = 'fov_x'
 RATIO = 'ratio'
 PRE_ILLUMINATION = 'before_light'
 POST_ILLUMINATION = 'after_light'
+PROCESS = 'process'
 
 logger = logging.getLogger(__name__)
 

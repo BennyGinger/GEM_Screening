@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from a1_manager import A1Manager, launch_dish_workflow
-from celltinder import run_cell_tinder
 
 from gem_screening.logger import get_logger
 from gem_screening.tasks.data_intensity import extract_measure_intensities
 from gem_screening.tasks.image_capture import QuitImageCapture, scan_cells
 from gem_screening.tasks.mask_utils import assign_masks_to_fovs
 from gem_screening.utils.client.client import cleanup_stale, wait_for_completion
+from gem_screening.utils.external import run_celltinder
 from gem_screening.utils.filesystem import create_timestamped_dir
 from gem_screening.utils.identifiers import make_run_id
 from gem_screening.utils.prompts import prompt_to_continue, FOCUS_PROMPT
@@ -57,7 +57,6 @@ def complete_pipeline(settings: PipelineSettings) -> None:
                             run_id=run_id,
                             well_grid=well_grid,
                             well_name=well)
-            
             # Scan cells
             try:
                 # Scan cells in the well, images will then be sent to the server for processing
@@ -80,7 +79,7 @@ def complete_pipeline(settings: PipelineSettings) -> None:
             logger.info(f"Data extraction completed for well: {well_obj.well_name}")
 
             # Run the cell tinder GUI
-            run_cell_tinder(well_obj.csv_path,
+            run_celltinder(well_obj.csv_path,
                             crop_size=stim_sets.crop_size)
 
 if __name__ == '__main__':
