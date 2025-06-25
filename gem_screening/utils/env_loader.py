@@ -1,12 +1,14 @@
 # gem_screening/utils/env_loader.py
 import os
+import sys
+from pathlib import Path
+
 from dotenv import load_dotenv
 
 
 FASTAPI_BASE_URL = "http://localhost:8000"
 DEFAULT_LOG_LEVEL = "INFO"
 LOGFILE_NAME = "gem_screening.log"
-HOST_LOG_FOLDER = "./logs"
 
 TEMPLATE = """\
 # ⚠️ Please review and customize before running:
@@ -16,20 +18,29 @@ FASTAPI_BASE_URL=http://localhost:8000
 # Control logging verbosity: DEBUG, INFO, WARNING, ERROR, CRITICAL
 LOG_LEVEL=INFO
 LOGFILE_NAME=gem_screening.log
-HOST_LOG_FOLDER=./logs
 """
 
+def get_env_path() -> Path:
+    if sys.platform == "win32":
+        # On Windows, use %APPDATA%\gem_screening
+        base = Path(os.getenv("APPDATA", Path.home().joinpath("AppData","Roaming")))
+    else:
+        # On Linux/macOS, use $XDG_CONFIG_HOME or ~/.config
+        base = Path(os.getenv("XDG_CONFIG_HOME", Path.home().joinpath(".config")))
+    cfg_dir = base.joinpath("gem_screening")
+    cfg_dir.mkdir(parents=True, exist_ok=True)
+    return cfg_dir.joinpath(".env")
+
 def load_pipeline_env(
-    root_dir: str,
     fastapi_url: str | None = None,
     log_level: str | None = None,
-    logfile_name: str | None = None,
-    host_log_folder: str | None = None,
-                    ) -> None:
+    logfile_name: str | None = None) -> None:
     
     """
     Load environment variables for the pipeline from a .env file.
     If the .env file does not exist, it creates a template and raises an error.
+    The .env file will be saved either in `C:\Users\<YourUserName>\AppData\Roaming\gem_screening`
+    on Windows or in `~/.config/gem_screening` on Linux/macOS.
     This function sets the following environment variables:
     - FASTAPI_BASE_URL: URL for the FastAPI server
     - LOG_LEVEL: Logging level for the application
@@ -39,9 +50,8 @@ def load_pipeline_env(
         fastapi_url (str | None): URL for the FastAPI server. If None, uses the value from .env or defaults to "http://localhost:8000".
         log_level (str | None): Logging level to set. If None, uses the value from .env or defaults to "INFO".
         logfile_name (str | None): Name of the log file. If None, uses the value from .env or defaults to "gem_screening.log".
-        host_log_folder (str | None): Directory where logs will be stored. If None, uses the HOST_LOG_FOLDER constant.
     """
-    env_path = root_dir.joinpath(".env")
+    env_path = get_env_path()
     if not env_path.exists():
         env_path.write_text(TEMPLATE)
         raise FileNotFoundError(
@@ -74,12 +84,6 @@ def load_pipeline_env(
         log_file = os.getenv("LOGFILE_NAME", LOGFILE_NAME)
     os.environ["LOGFILE_NAME"] = log_file
     
-    # set HOST_LOG_FOLDER
-    if host_log_folder:
-        log_folder = host_log_folder
-    else:
-        log_folder = str(HOST_LOG_FOLDER)
-    os.environ["HOST_LOG_FOLDER"] = log_folder
 
 
 

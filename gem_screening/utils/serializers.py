@@ -20,15 +20,17 @@ class CustomJSONEncoder(json.JSONEncoder):
     def default(self, obj: object) -> dict:
         if isinstance(obj, Well):
             return {"__Well__": {
-                "run_dir":     obj.run_dir,
-                "well_grid":   obj.well_grid,
-                "well":        obj.well,
-                "_fov_obj_list": obj._fov_obj_list,
-                "well_dir":    obj.well_dir,
-                "config_dir":  obj.config_dir,
-                "img_dir":     obj.img_dir,
-                "mask_dir":    obj.mask_dir,
-                "csv_path":    obj.csv_path,}}
+                "run_dir":           obj.run_dir,
+                "run_id":            obj.run_id,
+                "well_grid":         obj.well_grid,
+                "well":              obj.well,
+                "well_dir":          obj.well_dir,
+                "config_dir":        obj.config_dir,
+                "img_dir":           obj.img_dir,
+                "mask_dir":          obj.mask_dir,
+                "csv_path":          obj.csv_path,
+                "_fov_obj_list":     obj._fov_obj_list,
+                }}
                   
         if isinstance(obj, Path):
             return {"__Path__": True, "path": str(obj)}
@@ -38,13 +40,13 @@ class CustomJSONEncoder(json.JSONEncoder):
         
         if isinstance(obj, FieldOfView):
             return {"__FieldOfView__": {
-                "fov_coord":            obj.fov_coord,      # still a StageCoord
-                "well":                 obj.well,
-                "instance":             obj.instance,
-                "contain_positive_cell":obj.contain_positive_cell,
-                "fov_ID":               obj.fov_id,
-                "images_path":          obj.images_path,    # dict[str, Path]
-                "masks_path":           obj.masks_path}}
+                "well_dir":                obj.well_dir,
+                "fov_coord":               obj.fov_coord,
+                "instance":                obj.instance,
+                "contain_positive_cells":  obj.contain_positive_cells,
+                "fov_id":                  obj.fov_id,
+                "tiff_paths":              obj.tiff_paths,
+                }}
 
         # Let the base class raise TypeError for anything else
         return super().default(obj)

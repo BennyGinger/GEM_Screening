@@ -1,5 +1,4 @@
-# TODO: Build settings as class or dataclass model
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class AcquisitionSettings(BaseModel):
@@ -156,6 +155,7 @@ class ServerSettings(BaseModel):
         - `total_fovs` (int) is set by the pipeline to specify the total number of fields of view.
     """
     ## Set by user ##
+    server_timeout_sec: float = 600.0 # 10 minutes
     sigma: float = 0.0
     size: int = 7
     do_denoise: bool = True
@@ -175,6 +175,8 @@ class ServerSettings(BaseModel):
     run_id: str = ''
     dst_folder: str = ''
     total_fovs: int = 0
+    
+    model_config = ConfigDict(model_dump_exclude={"server_timeout_sec"})
     
 class PipelineSettings(BaseModel):
     """

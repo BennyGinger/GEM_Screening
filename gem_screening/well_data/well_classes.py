@@ -11,14 +11,8 @@ from numpy.typing import NDArray
 import tifffile as tiff
 
 from gem_screening.utils.identifiers import parse_image_filename, parse_category_instance
+from gem_screening.utils.pipeline_constants import DEFAULT_CATEGORIES, IMG_CAT, IMG_FOLDER, MASK_FOLDER
 from gem_screening.utils.serializers import CustomJSONEncoder, custom_decoder
-
-
-IMG_FOLDER = "images"
-MASK_FOLDER = "masks"
-IMG_CAT = ['measure', 'refseg', 'control']
-MASK_CAT = ['mask', 'stim']
-DEFAULT_CATEGORIES = IMG_CAT + MASK_CAT
 
 
 @dataclass(slots=True)
@@ -29,7 +23,7 @@ class FieldOfView:
         well_dir (Path): Path to the well directory.
         fov_coord (StageCoord): Coordinates of the field of view.
         instance (int): Instance number of the field of view.
-        contain_positive_cell (bool): Flag to indicate if the field of view contains positive cells.
+        contain_positive_cells (bool): Flag to indicate if the field of view contains positive cells.
         fov_ID (str): ID of the field of view. Format is "<well_name>P<instance-number>".
         images_path (dict[str, Path]): Dictionary mapping image file names to their paths.
         masks_path (dict[str, Path]): Dictionary mapping mask file names to their paths.
@@ -37,7 +31,7 @@ class FieldOfView:
     well_dir: Path
     fov_coord: StageCoord
     instance: int
-    contain_positive_cell: bool = True
+    contain_positive_cells: bool = True
     fov_id: str = field(init=False)
     # Images and masks files mapping
     tiff_paths: dict[str, list[Path]] = field(init=False,
@@ -57,10 +51,13 @@ class FieldOfView:
             ValueError: If the file name does not match the expected format or if the category is invalid.
         """
         cat = parse_category_instance(file_name)[0]
-        if cat not in IMG_CAT:
-            raise ValueError(f"Invalid category '{cat}' in file name '{file_name}'. Expected one of {IMG_CAT}")
+        if cat not in DEFAULT_CATEGORIES:
+            raise ValueError(f"Invalid category '{cat}' in file name '{file_name}'. Expected one of {DEFAULT_CATEGORIES}")
         
-        return self.img_dir.joinpath(f"{self.fov_id}_{file_name}.tif")
+        if cat in IMG_CAT:
+            # If the category is an image category, we save it in the images folder
+            return self.img_dir.joinpath(f"{self.fov_id}_{file_name}.tif")
+        return self.mask_dir.joinpath(f"{self.fov_id}_{file_name}.tif")
     
     def register_img_file(self, file_name: str)-> Path:
         """
@@ -134,12 +131,12 @@ class FieldOfView:
         obj = object.__new__(cls)
         obj.__dict__.update(data)
         # recompute the ID, just in case it was not set
-        obj.fov_ID = f"{obj.well}P{obj.instance}"
+        obj.fov_id = f"{obj.well}P{obj.instance}"
         # always wrap the loaded dict so we regain defaultdict(list) behavior. Will preserve all previous inserted paths.
         obj.tiff_paths = defaultdict(list, obj.tiff_paths)
         return obj
 
-   
+
 @dataclass(slots=True)
 class Well:
     """
@@ -227,7 +224,7 @@ class Well:
         """
         Get the list of field of views that contain positive cells.
         """
-        return [fov for fov in self._fov_obj_list if fov.contain_positive_cell]
+        return [fov for fov in self._fov_obj_list if fov.contain_positive_cells]
     
     @property
     def well_obj_path(self)-> Path:

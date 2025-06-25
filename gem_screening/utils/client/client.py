@@ -63,10 +63,18 @@ def submit_full_processing(payload: ProcessPayload) -> None:
     logger.info(f"Enqueued {data['count']} tasks under run_id {data['run_id']}")
 
 def wait_for_completion(run_id: str,
-                        poll_interval: float = 1.) -> None:
+                        poll_interval: float = 1.,
+                        timeout: float = None) -> None:
     """
     Polls GET {base_url}/process/{run_id}/status until it returns "finished".
     Displays a progress bar based on the 'remaining' count.
+    If timeout is set, raises TimeoutError after that many seconds.
+    Args:
+        run_id (str): The run ID to check the status for.
+        poll_interval (float): The interval in seconds to wait between polls. Default is 1 second.
+        timeout (float | None): Optional timeout in seconds. If set, raises TimeoutError if the run does not finish within this time.
+    Raises:
+        TimeoutError: If the run does not finish within the specified timeout.
     """
     status_url = f"{BASE_URL}/process/{run_id}/status"
     total = None
@@ -86,8 +94,16 @@ def wait_for_completion(run_id: str,
     tqdm_ins = get_corresponding_tqdm()
     pbar = tqdm_ins(total=total, desc=f"Run {run_id}", unit="fov")
 
+    # Keep track of the start time
+    start_time = time.monotonic()
     try:
         while True:
+            if timeout is not None and (time.monotonic() - start_time) > timeout:
+                pbar.close()
+                msg = f"Timed out after {timeout:.0f}s waiting for run {run_id}"
+                logger.error(msg)
+                raise TimeoutError(msg)
+            
             time.sleep(poll_interval)
             resp = requests.get(status_url, timeout=10)
             resp.raise_for_status()

@@ -1,3 +1,4 @@
+from __future__ import annotations
 import logging
 from pathlib import Path
 from functools import partial
@@ -9,12 +10,16 @@ from gem_screening.utils.client.client import submit_full_processing, submit_bg_
 from gem_screening.utils.client.models import build_payload
 from gem_screening.utils.filesystem import imwrite_atomic
 from gem_screening.utils.identifiers import parse_category_instance
+from gem_screening.utils.pipeline_constants import MEASURE_LABEL, REFSEG_LABEL
 from gem_screening.utils.prompts import prompt_to_continue, ADD_LIGAND_PROMPT
-from gem_screening.utils.settings.models import PipelineSettings, PresetMeasure, PresetControl, PresetRefseg, ServerSettings
+from gem_screening.utils.settings.models import PipelineSettings, PresetMeasure, PresetControl, ServerSettings
 from gem_screening.well_data.well_classes import FieldOfView, Well
 
 
+# Set up logging
 logger = logging.getLogger(__name__)
+
+
 def scan_cells(well_obj: Well, settings: PipelineSettings, a1_manager: A1Manager) -> None:
     """
     Main function to scan cells in a well. It takes images of all the field of views in the well and saves them.
@@ -34,7 +39,7 @@ def scan_cells(well_obj: Well, settings: PipelineSettings, a1_manager: A1Manager
     """
     
     logger.info(f"Start imaging for well {well_obj.well} with run ID {well_obj.run_id}, round 1")
-    _image_all_fov(well_obj, a1_manager, settings, "measure_1")
+    image_all_fov(well_obj, a1_manager, settings, f"{MEASURE_LABEL}_1")
     
     # Ask user to stimulate cells
     if not prompt_to_continue(ADD_LIGAND_PROMPT):
@@ -42,16 +47,22 @@ def scan_cells(well_obj: Well, settings: PipelineSettings, a1_manager: A1Manager
     
     # Second imaging loop, after cell stimulation
     logger.info(f"Start imaging for well {well_obj.well} with run ID {well_obj.run_id}, round 2")
-    _image_all_fov(well_obj, a1_manager, settings, "measure_2")
+    image_all_fov(well_obj, a1_manager, settings, f"{MEASURE_LABEL}_2")
     
-    # Save the well object
-    well_obj.to_json()
-
-
-################## Imaging Functions #################
-def _image_all_fov(well_obj: Well, a1_manager: A1Manager, settings: PipelineSettings, imaging_loop: str) -> None:
+    logger.info(f"Finished imaging for well {well_obj.well} with run ID {well_obj.run_id}")
+        
+def image_all_fov(well_obj: Well, a1_manager: A1Manager, settings: PipelineSettings, imaging_loop: str) -> None:
     """
     Take images of all the field of views in the well.
+    
+    If `imaging_loop` contains 'measure', we:
+      1. snap a measure image → bg removal
+      2. snap a refseg image → full processing
+      1'. snap a measure image → full processing, if no refseg is used
+    
+    If `imaging_loop` contains 'control', we:
+      1. snap a control image → bg removal only
+    
     Args:
         well_obj (Well): The well object containing the field of views.
         a1_manager (A1Manager): The A1Manager object to control the microscope.
@@ -59,66 +70,83 @@ def _image_all_fov(well_obj: Well, a1_manager: A1Manager, settings: PipelineSett
         imaging_loop (str): The imaging loop label to use for the acquisition. Expected format is `"<category>_<instance>"`.
     """
     # Setup the imaging loop
-    use_refseg = settings.measure_settings.refseg
-    fov_lst = well_obj.positive_fovs
-    total_fovs = len(fov_lst)
     server_settings: ServerSettings = settings.server_settings
     server_settings.run_id = well_obj.run_id
     server_settings.dst_folder = str(well_obj.mask_dir)
-    server_settings.total_fovs = total_fovs
+    server_settings.total_fovs = len(well_obj.positive_fovs)
     
-    input_preset: PresetMeasure | PresetControl
+    # Initialize the different steps functions
+    snap = partial(_take_image_fov, a1_manager=a1_manager)
+    bg_removal = partial(_remove_bg, server_settings=server_settings)
+    full_process = partial(_full_image_process, server_settings=server_settings)
+    
+    # Determine the different steps of the imaging loop
+    
+    steps = []
     if 'measure' in imaging_loop:
-        input_preset = settings.measure_settings.preset_measure
+        measure_preset: PresetMeasure = settings.measure_settings.preset_measure
+        use_refseg = settings.measure_settings.refseg
+        steps.append((imaging_loop, measure_preset, bg_removal))
+        
+        if use_refseg:
+            refseg_preset = settings.measure_settings.preset_refseg
+            refseg_loop = f"{REFSEG_LABEL}_{parse_category_instance(imaging_loop)[1]}"
+            steps.append((refseg_loop, refseg_preset, full_process))
+        else:
+            # If no refseg is used, we need to replace the bg_removal by full process for the measure image
+            steps[0] = (imaging_loop, measure_preset, full_process)
     elif 'control' in imaging_loop:
-        input_preset = settings.control_settings.preset
-        use_refseg = False
+        control_preset: PresetControl = settings.control_settings.preset
+        steps.append((imaging_loop, control_preset, bg_removal))
+    
     else:
         raise ValueError(f"Invalid imaging loop: {imaging_loop}. Expected 'measure' or 'control' in the loop name.")
     
-    input_preset_refseg: PresetRefseg | None = None
-    if use_refseg:
-        input_preset_refseg = settings.measure_settings.preset_refseg
-        imaging_loop_refseg = f"refseg_{parse_category_instance(imaging_loop)[1]}"
+    # Run the steps
+    total_fovs = len(well_obj.positive_fovs)
+    for fov in progress_bar(well_obj.positive_fovs,
+                            desc=f"Imaging {imaging_loop}",
+                            total=total_fovs):
+        for loop_name, preset, post_fn in steps:
+            # Take image of the fov
+            img_path = snap(fov, input_preset=preset, imaging_loop=loop_name)
+            
+            # Post-process the image
+            post_fn(img_path)
     
-    # Prepare the imaging function
-    partial_take_image_fov = partial(
-        _take_image_fov,
-        a1_manager=a1_manager)
-    
-    # Go trhough all positive fov
-    for fov_obj in progress_bar(fov_lst,
-                        desc=f"Imaging {imaging_loop}",
-                        total=total_fovs):
-        # Take image of the fov
-        img_path = partial_take_image_fov(fov_obj, 
-                               input_preset=input_preset,
-                               imaging_loop=imaging_loop)
-        
-        if use_refseg:
-            # Send the `measure` image for bg processing
-            bg_payload = build_payload(img_path=img_path,
+    # Save the well object
+    well_obj.to_json()
+
+################## Imaging Functions #################
+def _remove_bg(server_settings: ServerSettings, img_path: Path) -> None:
+    """
+    Only send the image for background subtraction.
+    Args:
+        server_settings (ServerSettings): The server settings for the image processing.
+        img_path (Path): The path to the image to be processed.
+    """
+    bg_payload = build_payload(img_path=img_path,
                                        server_settings=server_settings,
                                        bg_only=True)
-            submit_bg_subtraction(bg_payload)
-                                              
-            # Overwrite the `measure` img_path with the `refseg` image path
-            img_path = partial_take_image_fov(fov_obj,
-                                   input_preset=input_preset_refseg,
-                                   imaging_loop=imaging_loop_refseg)
-        
-        # Send the `measure` or `refseg` to full processing
-        full_payload = build_payload(img_path=img_path,
-                                     server_settings=server_settings,
-                                     )
-        submit_full_processing(full_payload)
+    submit_bg_subtraction(bg_payload)
+
+def _full_image_process(server_settings: ServerSettings, img_path: Path) -> None:
+    """
+    Send the image for full processing, including background subtraction, segmentation, and tracking.
+    Args:
+        server_settings (ServerSettings): The server settings for the image processing.
+        img_path (Path): The path to the image to be processed.
+    """
+    full_payload = build_payload(img_path=img_path,
+                                     server_settings=server_settings,)
+    submit_full_processing(full_payload)
 
 class QuitImageCapture:
     """
     Raised when the user wants to quit the image capture process.
     """
     pass
-            
+
 def _take_image_fov(fov_obj: FieldOfView, input_preset: PresetMeasure | PresetControl, imaging_loop: str, a1_manager: A1Manager) -> Path:
     """
     Take an image of a field of view and save it to the specified directory.
@@ -127,9 +155,6 @@ def _take_image_fov(fov_obj: FieldOfView, input_preset: PresetMeasure | PresetCo
         input_preset (PresetMeasure | PresetControl): The preset settings for the imaging.
         imaging_loop (str): The imaging loop label to use for the acquisition.
         a1_manager (A1Manager): The A1Manager object to control the microscope.
-        server_settings (dict): Dictionary containing the server settings for the image processing.
-        round_num (int): The round number for processing.
-        total_fovs (int): Total number of fields of view.
     Returns:
         Path: The path where the image is saved.
     """
@@ -138,7 +163,7 @@ def _take_image_fov(fov_obj: FieldOfView, input_preset: PresetMeasure | PresetCo
     
     # Change oc settings
     a1_manager.oc_settings(**input_preset.model_dump())
-    a1_manager.load_dmd_mask() # Load the fullON mask
+    a1_manager.load_dmd_mask('fullON')
     
     # Take image and do background correction
     img = a1_manager.snap_image()

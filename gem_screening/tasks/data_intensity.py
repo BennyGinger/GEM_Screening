@@ -8,31 +8,18 @@ import pandas as pd
 from skimage.measure import regionprops_table
 from progress_bar import run_parallel as parallel_progress_bar
 
+from gem_screening.utils.pipeline_constants import AFTER_STIM, BEFORE_STIM, CELL_ID, CELL_LABEL, CENTROID_X, CENTROID_Y, CONTROL_LABEL, FOV_ID, FOV_X, FOV_Y, MASK_LABEL, POST_ILLUMINATION, PRE_ILLUMINATION, RATIO, STIM_LABEL, MEASURE_LABEL
 from gem_screening.well_data.well_classes import FieldOfView
 
-# Define constants for column names
-RATIO = 'ratio'
-BEFORE_STIM = 'before_stim'
-AFTER_STIM = 'after_stim'
-FOV_ID = 'fov_ID'
-CENTROID_X = 'centroid_x'
-CENTROID_Y = 'centroid_y'
-CELL_LABEL = 'cell_numb'
-CELL_ID = 'cell_id'
-FOV_Y = 'fov_y'
-FOV_X = 'fov_x'
-RATIO = 'ratio'
-PRE_ILLUMINATION = 'before_light'
-POST_ILLUMINATION = 'after_light'
-PROCESS = 'process'
 
 logger = logging.getLogger(__name__)
+
 
 def extract_measure_intensities(fovs: list[FieldOfView], 
                      true_cell_threshold: int,
                      csv_path: Path,
                      *, 
-                     executor: str = 'process', 
+                     executor: str = 'thread', 
                      max_workers: int | None = None) -> None:
     """
     Extract the region properties for all FOVs in parallel, convert it to a pandas `DataFrame` and save it to a CSV file.
@@ -40,7 +27,7 @@ def extract_measure_intensities(fovs: list[FieldOfView],
         fovs (list[FieldOfView]): List of FieldOfView objects to process.
         true_cell_threshold (int): Threshold for true cell detection. Below this intensity value, cells are considered noise and set to 0 in the output.
         csv_path (Path): Path to save the resulting CSV file.
-        executor (str, optional): Type of executor to use for parallel processing ('thread' or 'process'). Defaults to 'process'.
+        executor (str, optional): Type of executor to use for parallel processing ('thread' or 'process'). Defaults to 'thread'.
         max_workers (int | None): Maximum number of workers to use for parallel processing. Defaults to None, which lets the executor decide based on available resources.
     """
     # Bind the threshold into a worker
@@ -58,18 +45,19 @@ def extract_measure_intensities(fovs: list[FieldOfView],
     df = pd.concat(region_dfs, ignore_index=True)
     # TODO: Change that to parquet
     df.to_csv(csv_path, index=False)
+    logger.info(f"Extracted region properties for {len(fovs)} FOVs and saved to {csv_path}.")
 
 def update_control_intensities(fovs: list[FieldOfView],
                                csv_path: Path,
                                *,
-                               executor: str = 'process',
+                               executor: str = 'thread',
                                max_workers: int | None = None) -> None:
     """
     Update the region properties DataFrame with control images for all FOVs in parallel.
     Args:
         fovs (list[FieldOfView]): List of FieldOfView objects to process.
         csv_path (Path): Path to the CSV file containing the original region properties.
-        executor (str, optional): Type of executor to use for parallel processing ('thread' or 'process'). Defaults to 'process'.
+        executor (str, optional): Type of executor to use for parallel processing ('thread' or 'process'). Defaults to 'thread'.
         max_workers (int | None): Maximum number of workers to use for parallel processing. Defaults to None, which lets the executor decide based on available resources.
     """
     # Build (fov, subdf) tuples by filtering on cell_id prefix
@@ -88,6 +76,7 @@ def update_control_intensities(fovs: list[FieldOfView],
     # Concatenate all the DataFrames
     df = pd.concat(sub_dfs, ignore_index=True)
     df.to_csv(csv_path, index=False)
+    logger.info(f"Updated region properties with control images for {len(fovs)} FOVs and saved to {csv_path}.")
 
 def _create_regionprops(fov: FieldOfView, true_cell_threshold: int) -> pd.DataFrame:
     """
@@ -102,8 +91,6 @@ def _create_regionprops(fov: FieldOfView, true_cell_threshold: int) -> pd.DataFr
     props0, propsn = _regionprops_wrapper(fov, False)
     
     # Convert the properties to DataFrames
-    # FIXME: For consistency, change the column names: 'before_stim' -> 'mean_pre_stim
-    # and 'after_stim' -> 'mean_post_stim'; 'cell_numb' -> 'cell_label'; 'fov_ID' -> 'fov_id'
     df0 = pd.DataFrame(props0).rename(columns={'mean_intensity': BEFORE_STIM,
                                                'label': CELL_LABEL})
     dfn = pd.DataFrame(propsn).rename(columns={'mean_intensity': AFTER_STIM,
@@ -150,7 +137,7 @@ def _update_regionprops(fov: FieldOfView, df_ori: pd.DataFrame) -> pd.DataFrame:
 
 def _regionprops_wrapper(fov: FieldOfView, is_control: bool) -> tuple[dict[str, NDArray], dict[str, NDArray]]:
     """
-    Wrapper function to extract region properties for a single FieldOfView.
+    Wrapper function to extract region properties for a single FieldOfView of predetermined properties (['label', 'mean_intensity', 'centroid']).
     Args:
         fov (FieldOfView): The FieldOfView object to process.
         is_control (bool): Whether to extract properties for control images or measure images.
@@ -161,12 +148,12 @@ def _regionprops_wrapper(fov: FieldOfView, is_control: bool) -> tuple[dict[str, 
     """
     # Determine the category of images and masks based on whether it's a control or measure FOV
     if is_control:
-        img_cat = 'control'
-        mask_cat = 'stim'
+        img_cat = CONTROL_LABEL
+        mask_cat = STIM_LABEL
         propn = ['label', 'mean_intensity']
     else:
-        img_cat = 'measure'
-        mask_cat = 'mask'
+        img_cat = MEASURE_LABEL
+        mask_cat = MASK_LABEL
         propn = ['label', 'mean_intensity', 'centroid']
     
     # Load the images and masks for the FOV
@@ -177,7 +164,7 @@ def _regionprops_wrapper(fov: FieldOfView, is_control: bool) -> tuple[dict[str, 
     # Extract the properties of each frame
     props0 = regionprops_table(mask0,
                               intensity_image=img0,
-                              properties=["label", "mean_intensity"])
+                              properties=['label', 'mean_intensity'])
     
     propsn = regionprops_table(maskn,
                               intensity_image=imgn,

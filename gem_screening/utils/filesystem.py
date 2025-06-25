@@ -36,6 +36,6 @@ def imwrite_atomic(final_path: Path, image_data: np.ndarray, **kwargs):
     and then renamed to the final filename. Ensure that the final file is
     completely written before any file watcher sees it.
     """
-    temp_path = final_path.joinpath(".tmp")
+    temp_path = final_path.with_suffix(final_path.suffix + '.tmp')
     imwrite(temp_path, image_data, compression='zlib', **kwargs)
     os.rename(temp_path, final_path)

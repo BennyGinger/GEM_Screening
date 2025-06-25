@@ -41,18 +41,17 @@ def make_run_id() -> str:
     return run_id
 
 
-# regex will match e.g. "A1P3_measure_02.tif"
+# regex will match e.g. the stem "A1P3_measure_02" (no extension)
 _IMG_FILE_RE = re.compile(
     r'^(?P<fov_id>[^_]+)_'         # the FOV ID (e.g. "A1P3")
     r'(?P<category>[^_]+)_'       # the image category
-    r'(?P<instance>\d+)\.tif$')    # the instance number + .tif
+    r'(?P<instance>\d+)$')    # the instance number
 
 def parse_image_filename(path: Path) -> tuple[str, str, int]:
     """
-    Extract (fov_id, category, instance) from a filename like
-    "A1P3_measure_02.tif". Raises ValueError if it doesn't match.
+    Given a Path, strip its suffix and extract (fov_id, category, instance) from a stem like "A1P3_measure_02". Raises ValueError if it doesn't match.
     """
-    name = path.name
+    name = path.stem
     m = _IMG_FILE_RE.match(name)
     if not m:
         raise ValueError(f"Invalid img filename: {name}")
@@ -63,27 +62,29 @@ def parse_image_filename(path: Path) -> tuple[str, str, int]:
     try:
         inst = int(inst)
     except ValueError:
-        raise ValueError(f"Invalid instance number in filename: {name}. Expected format is '<fov_id>_<category>_<instance-number>.tif'")
+        raise ValueError(f"Invalid instance number in filename: {name}. Expected format is '<fov_id>_<category>_<instance-number>'")
     
     return fov_id, cat, inst
     
 _CAT_INST_RE = re.compile(
     r'^(?P<category>[^_]+)_'      # the image category
-    r'(?P<instance>\d+)\.tif$')    # the instance number + .tif
+    r'(?P<instance>\d+)$')    # the instance number
 
 def parse_category_instance(filename: str) -> tuple[str, int]:
     """
-    Extract (category, instance) from a filename like "measure_02.tif".
+    Extract (category, instance) from a string like "measure_02" (no extension).
     Raises ValueError if it doesn't match.
     """
     m = _CAT_INST_RE.match(filename)
     if not m:
-        raise ValueError(f"Invalid img filename: {filename}")
+        raise ValueError(f"Invalid category-instance format: {filename!r}. "
+                         "Expected '<category>_<instance-number>'")
     
     cat = m.group('category')
     inst = m.group('instance')
     try:
         inst = int(inst)
     except ValueError:
-        raise ValueError(f"Invalid instance number in filename: {filename}. Expected format is '<category>_<instance-number>'")
+        raise ValueError(f"Invalid instance number in: {filename!r}. "
+                         "Expected '<category>_<instance-number>' with a numeric instance (e.g. _1, _2...).")
     return cat, inst

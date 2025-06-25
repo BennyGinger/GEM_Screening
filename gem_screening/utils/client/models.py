@@ -1,23 +1,9 @@
 from dataclasses import dataclass
-from typing import Any, Union
+from typing import Any
 
+from gem_screening.utils.pipeline_constants import BG_SETS, CP_SETS
 from gem_screening.utils.settings.models import ServerSettings
 
-
-BG_SETS = {"sigma": 0.0,
-           "size": 7,}
-
-CP_SETS = {"do_denoise": True,
-               "model_type": "cyto2",
-               "restore_type": "denoise_cyto2",
-               "gpu": True,
-               "channels": None,
-               "diameter": 60,
-               "flow_threshold": 0.4,
-               "cellprob_threshold": 0.0,
-               "z_axis": None,
-               "do_3D": False,
-               "3D_stitch_threshold": 0,}
 
 @dataclass
 class BackgroundPayload():
