@@ -1,14 +1,7 @@
-from dataclasses import asdict
+from dataclasses import asdict, fields, is_dataclass
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING
-
-from a1_manager import StageCoord
-
-
-if TYPE_CHECKING:
-    # these lines are invisible at runtime, but IDEs index them
-    from gem_screening.well_data.well_classes import Well, FieldOfView
+from typing import Any
     
        
 class CustomJSONEncoder(json.JSONEncoder):
@@ -18,40 +11,22 @@ class CustomJSONEncoder(json.JSONEncoder):
         json.JSONEncoder: The base JSON encoder class.
     """
     def default(self, obj: object) -> dict:
-        if isinstance(obj, Well):
-            return {"__Well__": {
-                "run_dir":           obj.run_dir,
-                "run_id":            obj.run_id,
-                "well_grid":         obj.well_grid,
-                "well":              obj.well,
-                "well_dir":          obj.well_dir,
-                "config_dir":        obj.config_dir,
-                "img_dir":           obj.img_dir,
-                "mask_dir":          obj.mask_dir,
-                "csv_path":          obj.csv_path,
-                "_fov_obj_list":     obj._fov_obj_list,
-                }}
+        # Encode any dataclass as a dictionary with a type identifier
+        if is_dataclass(obj):
+            type_name = obj.__class__.__name__
+            d = {f.name: getattr(obj, f.name) for f in fields(obj)}
+            return { f"__{type_name}__": d }
                   
         if isinstance(obj, Path):
-            return {"__Path__": True, "path": str(obj)}
+            return {"__Path__": {"path": str(obj)}}
         
-        if isinstance(obj, StageCoord):
-            return { "__StageCoord__": asdict(obj) }
+        if isinstance(obj, tuple):
+            return {"__tuple__": list(obj)}
         
-        if isinstance(obj, FieldOfView):
-            return {"__FieldOfView__": {
-                "well_dir":                obj.well_dir,
-                "fov_coord":               obj.fov_coord,
-                "instance":                obj.instance,
-                "contain_positive_cells":  obj.contain_positive_cells,
-                "fov_id":                  obj.fov_id,
-                "tiff_paths":              obj.tiff_paths,
-                }}
-
-        # Let the base class raise TypeError for anything else
+        # Fall back to the default JSON encoder for other types
         return super().default(obj)
     
-def custom_decoder(dct: dict) -> dict:
+def custom_json_decoder(dct: dict[str, Any]) -> dict[str, Any]:
     """
     Custom JSON decoder to handle specific types during deserialization.
     Args:
@@ -59,12 +34,34 @@ def custom_decoder(dct: dict) -> dict:
     Returns:
         dict: The decoded dictionary.
     """
-    if "__Well__" in dct:
-        return dct["__Well__"]
-    if "__Path__" in dct:
-        return Path(dct["path"])
-    if "__StageCoord__" in dct:
-        return StageCoord(**dct["__StageCoord__"])
-    if "__FieldOfView__" in dct:
-        return FieldOfView.from_dict(dct["__FieldOfView__"])
+    # Look for any tagged object (e.g. __Well__, "__FieldOfView__", __StageCoord__, __Path__, __tuple__)
+    for key in list(dct):
+        if key.startswith("__") and key.endswith("__"):
+            type_name = key.strip("__")
+            data = dct[key]
+
+            # 1) Well  
+            if type_name == "Well":
+                from gem_screening.well_data.well_classes import Well
+                return Well.from_dict(data)
+
+            # 2) FieldOfView  
+            if type_name == "FieldOfView":
+                from gem_screening.well_data.well_classes import FieldOfView
+                return FieldOfView.from_dict(data)
+            
+            # 3) StageCoord (or any other dataclass)  
+            if type_name == "StageCoord":
+                from a1_manager import StageCoord
+                return StageCoord(**data)
+
+            # 3) Path  
+            if type_name == "Path":
+                return Path(data["path"])
+
+            # 4) tuple  
+            if type_name == "tuple":
+                return tuple(data)
+
+    # fallback
     return dct

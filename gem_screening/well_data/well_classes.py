@@ -11,7 +11,7 @@ from numpy.typing import NDArray
 import tifffile as tiff
 
 from gem_screening.utils.identifiers import parse_image_filename, parse_category_instance
-from gem_screening.utils.pipeline_constants import DEFAULT_CATEGORIES, IMG_CAT, IMG_FOLDER, MASK_FOLDER
+from gem_screening.utils.pipeline_constants import CONFIG_FOLDER, DEFAULT_CATEGORIES, DF_FILENAME, IMG_CAT, IMG_FOLDER, MASK_FOLDER, WELL_FOLDER, WELL_OBJ_FILENAME
 from gem_screening.utils.serializers import CustomJSONEncoder, custom_decoder
 
 
@@ -24,9 +24,8 @@ class FieldOfView:
         fov_coord (StageCoord): Coordinates of the field of view.
         instance (int): Instance number of the field of view.
         contain_positive_cells (bool): Flag to indicate if the field of view contains positive cells.
-        fov_ID (str): ID of the field of view. Format is "<well_name>P<instance-number>".
-        images_path (dict[str, Path]): Dictionary mapping image file names to their paths.
-        masks_path (dict[str, Path]): Dictionary mapping mask file names to their paths.
+        fov_id (str): ID of the field of view. Format is "<well_name>P<instance-number>".
+        tiff_paths (dict[str, list[Path]]): Dictionary mapping image categories to lists of file paths for TIFF images.
     """
     well_dir: Path
     fov_coord: StageCoord
@@ -38,7 +37,11 @@ class FieldOfView:
                                                 default_factory=lambda: defaultdict(list))
     
     def __post_init__(self)-> None:
+        """
+        Initialize the field of view object. This method is called after the dataclass is created to set up the fov_id and tiff_paths to always wrap the loaded dict so it regain defaultdict(list) behavior. Will preserve all previous inserted paths during reconstruction (e.g. from JSON).
+        """
         self.fov_id = f"{self.well}P{self.instance}"
+        self.tiff_paths = defaultdict(list, self.tiff_paths)
     
     def _bild_img_path(self, file_name: str) -> Path:
         """
@@ -119,7 +122,7 @@ class FieldOfView:
         return self.well_dir.joinpath(MASK_FOLDER)
     
     @classmethod
-    def from_dict(cls: "FieldOfView", data: dict) -> "FieldOfView":
+    def from_dict(cls: type[FieldOfView], data: dict) -> FieldOfView:
         """
         Create a FieldOfView object from a dictionary.
         Args:
@@ -127,12 +130,9 @@ class FieldOfView:
         Returns:
             FieldOfView: The created FieldOfView object.
         """
-        # exactly the same “bypass __init__” logic as you had in from_json
         obj = object.__new__(cls)
         obj.__dict__.update(data)
-        # recompute the ID, just in case it was not set
-        obj.fov_id = f"{obj.well}P{obj.instance}"
-        # always wrap the loaded dict so we regain defaultdict(list) behavior. Will preserve all previous inserted paths.
+        # restore defaultdict behavior, allowing to automatically create lists for new keys
         obj.tiff_paths = defaultdict(list, obj.tiff_paths)
         return obj
 
@@ -151,13 +151,13 @@ class Well:
         img_dir (Path): Path to the images directory.
         mask_dir (Path): Path to the masks directory.
         csv_path (Path): Path to the CSV file containing cell data.
-        positive_fovs (list[FieldOfView]): List of FieldOfView objects associated with the well.
-        well_obj_path (Path): Path to the JSON file where the well object is saved.
+        positive_fovs (list[FieldOfView]): List of field of views that contain positive cells.
     """
     run_dir: Path
     run_id: str
     well_grid: dict[int, StageCoord]
     well: str
+    # Filled after __post_init__
     well_dir: Path = field(init=False)
     config_dir: Path = field(init=False)
     img_dir: Path = field(init=False)
@@ -165,17 +165,23 @@ class Well:
     csv_path: Path = field(init=False)
     _fov_obj_list: list[FieldOfView] = field(init=False)
     
-    def __post_init__(self)-> None:
+    def __post_init__(self) -> None:
+        self._initialize()
+    
+    def _initialize(self)-> None:
+        """
+        Initialize the well object. This method is called after the dataclass is created to set up the directories and field of view objects.
+        """
         # Setup the main well directory
-        self.well_dir = self._setup_dir(self.run_dir, 'Well')
+        self.well_dir = self._setup_dir(self.run_dir, WELL_FOLDER)
         self._reset_folder()
         # Setup the configuration directory.
-        self.config_dir = self._setup_dir(self.well_dir, 'config')
+        self.config_dir = self._setup_dir(self.well_dir, CONFIG_FOLDER)
         # Setup fresh images and masks directories.
-        self.img_dir = self._setup_dir(self.well_dir, 'images')
-        self.mask_dir = self._setup_dir(self.well_dir, 'masks')
+        self.img_dir = self._setup_dir(self.well_dir, IMG_FOLDER)
+        self.mask_dir = self._setup_dir(self.well_dir, MASK_FOLDER)
         # Setup the CSV file path for cell data.
-        self.csv_path = self.well_dir.joinpath(f"{self.well}_cell_data.csv")
+        self.csv_path = self.well_dir.joinpath(f"{self.well}_{DF_FILENAME}")
         
         # Unpack the field of view objects
         self._fov_obj_list = self._unpack_fov()
@@ -199,10 +205,10 @@ class Well:
         Remove all folders and files in the well folder.
         """
         to_remove = {
-            f"{self.well}_config",
-            f"{self.well}_images",
-            f"{self.well}_masks",
-            f"{self.well}_cell_data.csv",}
+            f"{self.well}_{CONFIG_FOLDER}",
+            f"{self.well}_{IMG_FOLDER}",
+            f"{self.well}_{MASK_FOLDER}",
+            f"{self.well}_{DF_FILENAME}",}
         
         for child in self.well_dir.iterdir():
             # Skip if not the right folder or csv file
@@ -228,7 +234,7 @@ class Well:
     
     @property
     def well_obj_path(self)-> Path:
-        return self.config_dir.joinpath(f"{self.well}_obj.json")
+        return self.config_dir.joinpath(f"{self.well}_{WELL_OBJ_FILENAME}")
     
     def to_json(self)-> None:
         """
@@ -238,7 +244,7 @@ class Well:
             json.dump(self, fp, cls=CustomJSONEncoder, indent=2)
     
     @classmethod
-    def from_json(cls: 'Well', file_path: Path)-> 'Well':
+    def from_json(cls: type[Well], file_path: Path)-> Well:
         """
         Load a well object from a JSON file.
         Args:
@@ -257,5 +263,14 @@ class Well:
         obj.__dict__.update(data)
         return obj
     
+    @classmethod
+    def from_dict(cls: type[Well], data: dict) -> Well:
+        """
+        Reconstruct a Well from its serialized dict, replaying the same
+        initialization logic so that all folders, CSV path, and FOVs are set up.
+        """
+        obj = object.__new__(cls)
+        obj.__dict__.update(data)
+        return obj
 
 

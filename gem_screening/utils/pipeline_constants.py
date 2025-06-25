@@ -8,6 +8,10 @@ STIM_LABEL = 'stim'
 # Define constants for image and mask folders and categories
 IMG_FOLDER = "images"
 MASK_FOLDER = "masks"
+WELL_FOLDER = "well"
+CONFIG_FOLDER = "config"
+DF_FILENAME = "cell_data.csv"
+WELL_OBJ_FILENAME = "obj.json"
 IMG_CAT = [MEASURE_LABEL, REFSEG_LABEL, CONTROL_LABEL]
 MASK_CAT = [MASK_LABEL, STIM_LABEL]
 DEFAULT_CATEGORIES = IMG_CAT + MASK_CAT
