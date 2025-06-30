@@ -1,10 +1,18 @@
-from gem_screening.utils.settings.models import AcquisitionSettings, DishSettings, AutofocusSettings, PresetMeasure, PresetControl, PresetStim, ServerSettings, PresetRefseg, MeasureSettings, ControlSettings, StimSettings, PipelineSettings
+from gem_screening.utils.settings.models import AcquisitionSettings, DishSettings, AutofocusSettings, PresetMeasure, PresetControl, PresetStim, ServerSettings, PresetRefseg, MeasureSettings, ControlSettings, StimSettings, PipelineSettings, LoggingSettings
 
 # Folder where the experiment folder will be created
 savedir = r'D:\Ben'
 
 # Name for the experiment folder, timestamp will be added as prefix
 savedir_name = 'test_celltinder'
+
+# base_url for the servers, `localhost` or a remote server (e.g. `10.114.104.21`)
+base_url = 'localhost'
+
+# Set up logging settings
+logging_sets = LoggingSettings(
+                    log_level='INFO',
+                    logfile_name='gem_screening.log',)
 
 # Aquisition settings for the microscope
 aqui_sets = AcquisitionSettings(
@@ -30,7 +38,7 @@ measure_sets = MeasureSettings(
                     preset_measure=PresetMeasure(
                                     optical_configuration='GFP',
                                     intensity=25),
-                    refseg=True,
+                    do_refseg=True,
                     preset_refseg=PresetRefseg(
                                     optical_configuration='iRed',
                                     intensity=5))
@@ -62,6 +70,7 @@ stim_sets = StimSettings(
 settings = PipelineSettings(
     savedir=savedir,
     savedir_name=savedir_name,
+    logging_settings=logging_sets,
     acquisition_settings=aqui_sets,
     dish_settings=dish_sets,
     af_settings=af_sets,

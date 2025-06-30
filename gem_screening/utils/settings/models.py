@@ -1,6 +1,17 @@
 from pydantic import BaseModel, ConfigDict
 
 
+class LoggingSettings(BaseModel):
+    """
+    Pydantic model for Logging settings.
+    
+    Attributes:
+        log_level (str, optional): The logging level, e.g., 'DEBUG', 'INFO', 'WARNING', 'ERROR', or 'CRITICAL'. Defaults to 'INFO'.
+        logfile_name (str, optional): The file name where logs will be saved. Defaults to 'gem_screening.log'.
+    """
+    log_level: str = 'INFO'
+    logfile_name: str = 'gem_screening.log'
+
 class AcquisitionSettings(BaseModel):
     """
     Pydantic model for Acquisition settings for the imaging process.
@@ -92,14 +103,14 @@ class MeasureSettings(BaseModel):
     Pydantic model for Settings for reference segmentation.
     Attributes:
         preset_measure (PresetMeasure): Preset settings for imaging.
-        refseg (bool, optional): If True, will perform reference segmentation. Defaults to True.
+        do_refseg (bool, optional): If True, will perform reference segmentation. Defaults to True.
         preset_refseg (PresetRefseg): Preset settings for reference segmentation.
     
     Notes:
         - `PresetMeasure` and `PresetRefseg` contain the optical configuration (str), intensity (%), and exposure time (ms) for imaging.
     """
     preset_measure: PresetMeasure = PresetMeasure()
-    refseg: bool = True
+    do_refseg: bool = True
     preset_refseg: PresetRefseg = PresetRefseg()
 
 class ControlSettings(BaseModel):
@@ -150,7 +161,7 @@ class ServerSettings(BaseModel):
         track_stitch_threshold (float, optional): Threshold for stitching masks during tracking. Defaults to 0.75.
         
     Notes:
-        - `run_id` (str) is set by the pipeline to identify the run.
+        - `well_id` (str) is set by the pipeline to identify the well run.
         - `dst_folder` (str) is set by the pipeline to specify the destination folder for results.
         - `total_fovs` (int) is set by the pipeline to specify the total number of fields of view.
     """
@@ -172,7 +183,7 @@ class ServerSettings(BaseModel):
     track_stitch_threshold: float = 0.75
     
     ## Set by pipeline ##
-    run_id: str = ''
+    well_id: str = ''
     dst_folder: str = ''
     total_fovs: int = 0
     
@@ -184,6 +195,8 @@ class PipelineSettings(BaseModel):
     Attributes:
         savedir (str): Directory where images will be saved.
         savedir_name (str): Name of the directory for saving images.
+        base_url (str): Base URL for the servers, defaults to `localhost`.
+        logging_settings (LoggingSettings): Settings for logging configuration.
         acquisition_settings (AcquisitionSettings): Settings for the aquisition process.
         dish_settings (DishSettings): Settings for the dish used in the imaging process.
         af_settings (AutofocusSettings): Settings for autofocus during the imaging process.
@@ -194,6 +207,8 @@ class PipelineSettings(BaseModel):
     """
     savedir: str
     savedir_name: str
+    base_url: str = 'localhost'
+    logging_settings: LoggingSettings
     acquisition_settings: AcquisitionSettings
     dish_settings: DishSettings
     af_settings: AutofocusSettings

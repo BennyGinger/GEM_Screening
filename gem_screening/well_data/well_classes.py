@@ -165,10 +165,7 @@ class Well:
     csv_path: Path = field(init=False)
     _fov_obj_list: list[FieldOfView] = field(init=False)
     
-    def __post_init__(self) -> None:
-        self._initialize()
-    
-    def _initialize(self)-> None:
+    def __post_init__(self)-> None:
         """
         Initialize the well object. This method is called after the dataclass is created to set up the directories and field of view objects.
         """
@@ -235,6 +232,15 @@ class Well:
     @property
     def well_obj_path(self)-> Path:
         return self.config_dir.joinpath(f"{self.well}_{WELL_OBJ_FILENAME}")
+    
+    @property
+    def well_id(self)-> str:
+        """
+        Construct the well ID from the run ID and well name.
+        Returns:
+            str: The well ID in the format "<run_id>_<well_name>".
+        """
+        return f"{self.run_id}_{self.well}"
     
     def to_json(self)-> None:
         """

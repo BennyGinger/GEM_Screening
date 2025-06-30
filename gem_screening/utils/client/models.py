@@ -34,14 +34,14 @@ class ProcessPayload(BackgroundPayload):
     Attributes:
         cellpose_settings (dict): Model and segmentation settings for Cellpose.
         dst_folder (str): Destination folder where processed images will be saved.
-        run_id (str): Unique identifier for the processing run.
+        well_id (str): Unique identifier for the processing well.
         total_fovs (int): Total number of fields of view, used to set the number of pending tracks in Redis.
         track_stitch_threshold (float, optional): Threshold for stitching masks during tracking. Default to 0.75.
         round (int): The round number for processing, build from the image path if not provided. Defaults to None.
     """
     cellpose_settings: dict[str, Any]
     dst_folder: str
-    run_id: str
+    well_id: str
     total_fovs: int
     track_stitch_threshold: float = 0.75
     round: int = None
@@ -73,7 +73,7 @@ def build_payload(img_path: str,
     cp_sets = CP_SETS.copy()
     track_stitch_threshold = settings_dict.pop("track_stitch_threshold", 0.75)
     # These parameters will raise an error in the pydantic model if not provided
-    run_id = settings_dict.pop("run_id", "UnknownRunID")
+    well_id = settings_dict.pop("well_id", "UnknownRunID")
     dst_folder = settings_dict.pop("dst_folder", "UnknownFolder")
     total_fovs = settings_dict.pop("total_fovs", "UnknownTotalFOVs")
     
@@ -85,7 +85,7 @@ def build_payload(img_path: str,
     # Build the payload
     return ProcessPayload(img_path=img_path,
                           dst_folder=str(dst_folder),
-                          run_id=run_id,
+                          well_id=well_id,
                           total_fovs=total_fovs,
                           track_stitch_threshold=track_stitch_threshold,
                           cellpose_settings=cp_sets,

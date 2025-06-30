@@ -6,8 +6,7 @@ from functools import partial
 from a1_manager import A1Manager
 from progress_bar import setup_progress_monitor as progress_bar
 
-from gem_screening.utils.client.client import submit_full_processing, submit_bg_subtraction
-from gem_screening.utils.client.models import build_payload
+from gem_screening.utils.client.client import bg_removal_client, full_process_client
 from gem_screening.utils.filesystem import imwrite_atomic
 from gem_screening.utils.identifiers import parse_category_instance
 from gem_screening.utils.pipeline_constants import MEASURE_LABEL, REFSEG_LABEL
@@ -38,7 +37,7 @@ def scan_cells(well_obj: Well, settings: PipelineSettings, a1_manager: A1Manager
         QuitImageCapture: If the user wants to quit the image capture process.
     """
     
-    logger.info(f"Start imaging for well {well_obj.well} with run ID {well_obj.run_id}, round 1")
+    logger.info(f"Start imaging for well ID {well_obj.well_id}, round 1")
     image_all_fov(well_obj, a1_manager, settings, f"{MEASURE_LABEL}_1")
     
     # Ask user to stimulate cells
@@ -46,10 +45,10 @@ def scan_cells(well_obj: Well, settings: PipelineSettings, a1_manager: A1Manager
         raise QuitImageCapture
     
     # Second imaging loop, after cell stimulation
-    logger.info(f"Start imaging for well {well_obj.well} with run ID {well_obj.run_id}, round 2")
+    logger.info(f"Start imaging for well ID {well_obj.well_id}, round 2")
     image_all_fov(well_obj, a1_manager, settings, f"{MEASURE_LABEL}_2")
     
-    logger.info(f"Finished imaging for well {well_obj.well} with run ID {well_obj.run_id}")
+    logger.info(f"Finished imaging for well ID {well_obj.well_id}")
         
 def image_all_fov(well_obj: Well, a1_manager: A1Manager, settings: PipelineSettings, imaging_loop: str) -> None:
     """
@@ -71,24 +70,24 @@ def image_all_fov(well_obj: Well, a1_manager: A1Manager, settings: PipelineSetti
     """
     # Setup the imaging loop
     server_settings: ServerSettings = settings.server_settings
-    server_settings.run_id = well_obj.run_id
+    server_settings.well_id = well_obj.well_id
     server_settings.dst_folder = str(well_obj.mask_dir)
     server_settings.total_fovs = len(well_obj.positive_fovs)
     
     # Initialize the different steps functions
     snap = partial(_take_image_fov, a1_manager=a1_manager)
-    bg_removal = partial(_remove_bg, server_settings=server_settings)
-    full_process = partial(_full_image_process, server_settings=server_settings)
+    bg_removal = partial(bg_removal_client, server_settings=server_settings)
+    full_process = partial(full_process_client, server_settings=server_settings)
     
     # Determine the different steps of the imaging loop
     
     steps = []
     if 'measure' in imaging_loop:
         measure_preset: PresetMeasure = settings.measure_settings.preset_measure
-        use_refseg = settings.measure_settings.refseg
+        do_refseg = settings.measure_settings.do_refseg
         steps.append((imaging_loop, measure_preset, bg_removal))
         
-        if use_refseg:
+        if do_refseg:
             refseg_preset = settings.measure_settings.preset_refseg
             refseg_loop = f"{REFSEG_LABEL}_{parse_category_instance(imaging_loop)[1]}"
             steps.append((refseg_loop, refseg_preset, full_process))
@@ -116,30 +115,6 @@ def image_all_fov(well_obj: Well, a1_manager: A1Manager, settings: PipelineSetti
     
     # Save the well object
     well_obj.to_json()
-
-################## Imaging Functions #################
-def _remove_bg(server_settings: ServerSettings, img_path: Path) -> None:
-    """
-    Only send the image for background subtraction.
-    Args:
-        server_settings (ServerSettings): The server settings for the image processing.
-        img_path (Path): The path to the image to be processed.
-    """
-    bg_payload = build_payload(img_path=img_path,
-                                       server_settings=server_settings,
-                                       bg_only=True)
-    submit_bg_subtraction(bg_payload)
-
-def _full_image_process(server_settings: ServerSettings, img_path: Path) -> None:
-    """
-    Send the image for full processing, including background subtraction, segmentation, and tracking.
-    Args:
-        server_settings (ServerSettings): The server settings for the image processing.
-        img_path (Path): The path to the image to be processed.
-    """
-    full_payload = build_payload(img_path=img_path,
-                                     server_settings=server_settings,)
-    submit_full_processing(full_payload)
 
 class QuitImageCapture:
     """

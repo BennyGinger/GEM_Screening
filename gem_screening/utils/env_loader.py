@@ -1,40 +1,35 @@
 # gem_screening/utils/env_loader.py
 import os
-import sys
 from pathlib import Path
 
-from dotenv import load_dotenv
 
+# TEMPLATE = """\
+# # ⚠️ Please review and customize before running:
+# BASE_URL=http://localhost:8000
 
-FASTAPI_BASE_URL = "http://localhost:8000"
-DEFAULT_LOG_LEVEL = "INFO"
-LOGFILE_NAME = "gem_screening.log"
+# #----------- LOGGING CONFIGURATION -----------
+# # Control logging verbosity: DEBUG, INFO, WARNING, ERROR, CRITICAL
+# LOG_LEVEL=INFO
+# LOGFILE_NAME=gem_screening.log
+# """
 
-TEMPLATE = """\
-# ⚠️ Please review and customize before running:
-FASTAPI_BASE_URL=http://localhost:8000
-
-#----------- LOGGING CONFIGURATION -----------
-# Control logging verbosity: DEBUG, INFO, WARNING, ERROR, CRITICAL
-LOG_LEVEL=INFO
-LOGFILE_NAME=gem_screening.log
-"""
-
-def get_env_path() -> Path:
-    if sys.platform == "win32":
-        # On Windows, use %APPDATA%\gem_screening
-        base = Path(os.getenv("APPDATA", Path.home().joinpath("AppData","Roaming")))
-    else:
-        # On Linux/macOS, use $XDG_CONFIG_HOME or ~/.config
-        base = Path(os.getenv("XDG_CONFIG_HOME", Path.home().joinpath(".config")))
-    cfg_dir = base.joinpath("gem_screening")
-    cfg_dir.mkdir(parents=True, exist_ok=True)
-    return cfg_dir.joinpath(".env")
+# def get_env_path() -> Path:
+#     if sys.platform == "win32":
+#         # On Windows, use %APPDATA%\gem_screening
+#         base = Path(os.getenv("APPDATA", Path.home().joinpath("AppData","Roaming")))
+#     else:
+#         # On Linux/macOS, use $XDG_CONFIG_HOME or ~/.config
+#         base = Path(os.getenv("XDG_CONFIG_HOME", Path.home().joinpath(".config")))
+#     cfg_dir = base.joinpath("gem_screening")
+#     cfg_dir.mkdir(parents=True, exist_ok=True)
+#     return cfg_dir.joinpath(".env")
 
 def load_pipeline_env(
-    fastapi_url: str | None = None,
-    log_level: str | None = None,
-    logfile_name: str | None = None) -> None:
+    run_dir: Path,
+    base_url: str = "localhost",
+    log_level: str = "INFO",
+    logfile_name: str = "gem_screening.log",
+    ) -> None:
     
     """
     Load environment variables for the pipeline from a .env file.
@@ -42,47 +37,26 @@ def load_pipeline_env(
     The .env file will be saved either in `C:\Users\<YourUserName>\AppData\Roaming\gem_screening`
     on Windows or in `~/.config/gem_screening` on Linux/macOS.
     This function sets the following environment variables:
-    - FASTAPI_BASE_URL: URL for the FastAPI server
+    - BASE_URL: URL for the servers
     - LOG_LEVEL: Logging level for the application
     - LOGFILE_NAME: Name of the log file   
     - HOST_LOG_FOLDER: Directory where logs will be stored
     Args:
-        fastapi_url (str | None): URL for the FastAPI server. If None, uses the value from .env or defaults to "http://localhost:8000".
-        log_level (str | None): Logging level to set. If None, uses the value from .env or defaults to "INFO".
-        logfile_name (str | None): Name of the log file. If None, uses the value from .env or defaults to "gem_screening.log".
+        base_url (str, optional): base URL for the servers. Defaults to `localhost`.
+        log_level (str, optional): Logging level to set. Defaults to `INFO`.
+        logfile_name (str, optional): Name of the log file. Defaults to `gem_screening.log`.
     """
-    env_path = get_env_path()
-    if not env_path.exists():
-        env_path.write_text(TEMPLATE)
-        raise FileNotFoundError(
-            f".env not found; template created at {env_path}. Please update it and rerun.")
-
-    # Ensure the .env file is writable
-    if not os.access(env_path, os.W_OK):
-        raise PermissionError(f"Cannot write to {env_path!r}")
+    # Expose HOST_DIR, folder that would be mounted in the Docker container
+    os.environ["HOST_DIR"] = str(run_dir)
     
-    load_dotenv(env_path, override=True)
+    # expose BASE_URL
+    os.environ["BASE_URL"] = base_url
 
-    # set FASTAPI_BASE_URL
-    if fastapi_url:
-        base_url = fastapi_url
-    else:
-        base_url = os.getenv("FASTAPI_BASE_URL", FASTAPI_BASE_URL)
-    os.environ["FASTAPI_BASE_URL"] = base_url
+    # Expose LOG_LEVEL
+    os.environ["LOG_LEVEL"] = log_level
 
-    # set LOG_LEVEL (override first, then file, then default)
-    if log_level:
-        lvl = log_level.upper()
-    else:
-        lvl = os.getenv("LOG_LEVEL", DEFAULT_LOG_LEVEL).upper()
-    os.environ["LOG_LEVEL"] = lvl
-
-    # set LOGFILE_NAME
-    if logfile_name:
-        log_file = logfile_name
-    else:
-        log_file = os.getenv("LOGFILE_NAME", LOGFILE_NAME)
-    os.environ["LOGFILE_NAME"] = log_file
+    # expose LOGFILE_NAME
+    os.environ["LOGFILE_NAME"] = logfile_name
     
 
 

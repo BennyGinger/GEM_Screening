@@ -1,22 +1,22 @@
-from dataclasses import asdict, dataclass
+from dataclasses import asdict
 import logging
+from pathlib import Path
 import time
-from typing import Any
 import requests
 import os
 
 from progress_bar import get_corresponding_tqdm
 
-from gem_screening.utils.client.models import BackgroundPayload, ProcessPayload
+from gem_screening.utils.client.models import BackgroundPayload, ProcessPayload, build_payload
 from gem_screening.utils.identifiers import HOST_PREFIX
+from gem_screening.utils.settings.models import ServerSettings
 
 
 logger = logging.getLogger(__name__)
 
 
-# Configuration, load from environment variable, which is launched in the main file (i.e. pipeline.py)
-BASE_URL = os.getenv("FASTAPI_BASE_URL") 
-
+BASE_URL = os.getenv("BASE_URL", "localhost") 
+FASTAPI_URL = f"http://{BASE_URL}:8000"
 
 def cleanup_stale() -> None:
     """
@@ -26,73 +26,90 @@ def cleanup_stale() -> None:
       pending_tracks:worker-01:*  
       finished:worker-01:*
     """
-    url = f"{BASE_URL}/cleanup/{HOST_PREFIX}"
+    url = f"{FASTAPI_URL}/cleanup/{HOST_PREFIX}"
     resp = requests.post(url, timeout=10)
     resp.raise_for_status()
     data = resp.json()
     logger.info(f"Cleanup removed {data['deleted']} stale keys for {HOST_PREFIX}")
 
-def submit_bg_subtraction(payload: BackgroundPayload) -> None:
+def bg_removal_client(server_settings: ServerSettings, img_path: Path) -> None:
+    """
+    Send a background subtraction task to the server. Payload is built using the provided image path and server settings.
+    Args:
+        server_settings (ServerSettings): The server settings containing the host prefix and other parameters.
+        img_path (Path): The path to the image file to be processed.
+    """
+    bg_payload = build_payload(img_path=img_path,
+                                       server_settings=server_settings,
+                                       bg_only=True)
+    _send_to_process_bg_sub(bg_payload)
+
+def full_process_client(server_settings: ServerSettings, img_path: Path) -> None:
+    """
+    Send a full processing task to the server. Payload is built using the provided image path and server settings.
+    Args:
+        server_settings (ServerSettings): The server settings containing the host prefix and other parameters.
+        img_path (Path): The path to the image file to be processed.
+    """
+    full_payload = build_payload(img_path=img_path,
+                                     server_settings=server_settings,)
+    _send_to_process(full_payload)
+
+def _send_to_process_bg_sub(payload: BackgroundPayload) -> None:
     """
     Call the /process_bg_sub endpoint to launch Celery jobs for background subtraction.
     Args:
         payload (BackgroundPayload): The payload containing the background subtraction parameters.
-    Returns:
-        None
     """
-    url = f"{BASE_URL}/process_bg_sub"
+    url = f"{FASTAPI_URL}/process_bg_sub"
     resp = requests.post(url, json=asdict(payload), timeout=10)
     resp.raise_for_status()
     data = resp.json()
     logger.info(f"Enqueued {data['count']} tasks for background subtraction.")
 
-def submit_full_processing(payload: ProcessPayload) -> None:
+def _send_to_process(payload: ProcessPayload) -> None:
     """
-    Call the /process endpoint to launch Celery jobs.
-    Under the hood it will send tasks to the Celery worker to process images.
-    Images will be background subtracted, denoised (if needed), segmented, and tracked (using IoU).
+    Call the /process endpoint to launch Celery jobs. Images will be background subtracted, denoised (if needed), segmented, and tracked (using IoU).
     Args:
         payload (ProcessPaylaod): The payload containing the image processing parameters.
-    Returns:
-        tuple[str, list[str]]: A tuple containing the run_id and a list of task IDs.
     """
-    url = f"{BASE_URL}/process"
+    url = f"{FASTAPI_URL}/process"
     resp = requests.post(url, json=asdict(payload), timeout=10)
     resp.raise_for_status()
     data = resp.json()
-    logger.info(f"Enqueued {data['count']} tasks under run_id {data['run_id']}")
+    logger.info(f"Enqueued {data['count']} tasks under well_id {data['well_id']}")
 
-def wait_for_completion(run_id: str,
+def wait_for_completion(well_id: str,
                         poll_interval: float = 1.,
                         timeout: float = None) -> None:
     """
-    Polls GET {base_url}/process/{run_id}/status until it returns "finished".
+    Polls GET {base_url}/process/{well_id}/status until it returns "finished".
     Displays a progress bar based on the 'remaining' count.
     If timeout is set, raises TimeoutError after that many seconds.
     Args:
-        run_id (str): The run ID to check the status for.
+        well_id (str): The well ID to check the status for.
         poll_interval (float): The interval in seconds to wait between polls. Default is 1 second.
         timeout (float | None): Optional timeout in seconds. If set, raises TimeoutError if the run does not finish within this time.
     Raises:
         TimeoutError: If the run does not finish within the specified timeout.
     """
-    status_url = f"{BASE_URL}/process/{run_id}/status"
+    status_url = f"{FASTAPI_URL}/process/{well_id}/status"
     total = None
     remaining = None
 
     # First poll to bootstrap the bar
-    logger.info(f"Checking status of run {run_id}...")
+    logger.info(f"Checking status of run {well_id}...")
     resp = requests.get(status_url, timeout=10)
     resp.raise_for_status()
     data = resp.json()
     if data['status'] == 'finished':
-        logger.info(f"Run {run_id} already finished.")
+        logger.info(f"Run {well_id} already finished.")
         return
 
     total = data['remaining']
     remaining = total
     tqdm_ins = get_corresponding_tqdm()
-    pbar = tqdm_ins(total=total, desc=f"Run {run_id}", unit="fov")
+    pbar = tqdm_ins(total=total, desc=f"Run {well_id}", unit="fov")
 
     # Keep track of the start time
     start_time = time.monotonic()
@@ -100,7 +117,7 @@ def wait_for_completion(run_id: str,
         while True:
             if timeout is not None and (time.monotonic() - start_time) > timeout:
                 pbar.close()
-                msg = f"Timed out after {timeout:.0f}s waiting for run {run_id}"
+                msg = f"Timed out after {timeout:.0f}s waiting for well {well_id}"
                 logger.error(msg)
                 raise TimeoutError(msg)
             
@@ -125,7 +142,7 @@ def wait_for_completion(run_id: str,
     finally:
         pbar.close()
 
-    logger.info(f"Run {run_id} completed.")
+    logger.info(f"Run {well_id} completed.")
 
 
 

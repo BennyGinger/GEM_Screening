@@ -65,6 +65,7 @@ def parse_image_filename(path: Path) -> tuple[str, str, int]:
         raise ValueError(f"Invalid instance number in filename: {name}. Expected format is '<fov_id>_<category>_<instance-number>'")
     
     return fov_id, cat, inst
+   
     
 _CAT_INST_RE = re.compile(
     r'^(?P<category>[^_]+)_'      # the image category
