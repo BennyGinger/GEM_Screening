@@ -3,7 +3,6 @@ from pathlib import Path
 import logging
 
 from a1_manager import A1Manager, launch_dish_workflow
-from cp_server import ComposeManager
 
 from gem_screening.utils.env_loader import load_pipeline_env
 from gem_screening.logger import get_logger, configure_logging
