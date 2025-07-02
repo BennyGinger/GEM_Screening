@@ -1,17 +1,17 @@
-from gem_screening.utils.settings.models import AcquisitionSettings, DishSettings, AutofocusSettings, PresetMeasure, PresetControl, PresetStim, ServerSettings, PresetRefseg, MeasureSettings, ControlSettings, StimSettings, PipelineSettings, LoggingSettings
+from gem_screening.utils.settings.models import AcquisitionSettings, DishSettings, PresetMeasure, PresetControl, PresetStim, ServerSettings, PresetRefseg, MeasureSettings, ControlSettings, StimSettings, PipelineSettings, LoggingSettings
 
 # Folder where the experiment folder will be created
 savedir = r'D:\Ben'
 
 # Name for the experiment folder, timestamp will be added as prefix
-savedir_name = 'test_celltinder'
+savedir_name = 'test_gem_screening'
 
 # base_url for the servers, `localhost` or a remote server (e.g. `10.114.104.21`)
 base_url = 'localhost'
 
 # Set up logging settings
 logging_sets = LoggingSettings(
-                    log_level='INFO',
+                    log_level='DEBUG',
                     logfile_name='gem_screening.log',)
 
 # Aquisition settings for the microscope
@@ -23,15 +23,11 @@ aqui_sets = AcquisitionSettings(
 # Settings for the dish used in the imaging process
 dish_sets = DishSettings(
                     dish_name='35mm',
-                    overwrite_calib=False,
                     well_selection=['A1'],
-                    numb_field_view=3,
-                    overlap_percent=None)
-
-# Autofocus settings for the imaging process
-af_sets = AutofocusSettings(
-                    method='sq_grad',
-                    overwrite=False)
+                    af_method='sq_grad',
+                    overwrite_autofocus=False,
+                    overwrite_calib=False,
+                    numb_field_view=3,)
 
 # Preset settings for imaging for measurement
 measure_sets = MeasureSettings(
@@ -60,6 +56,7 @@ control_sets = ControlSettings(
 stim_sets = StimSettings(
                     true_cell_threshold=50,
                     erosion_factor=3,
+                    crop_size=251,
                     preset=PresetStim(
                                     optical_configuration='BFP',
                                     intensity=100,
@@ -67,13 +64,12 @@ stim_sets = StimSettings(
 
 
 # Combine all settings into a PipelineSettings object
-settings = PipelineSettings(
+full_settings = PipelineSettings(
     savedir=savedir,
     savedir_name=savedir_name,
     logging_settings=logging_sets,
     acquisition_settings=aqui_sets,
     dish_settings=dish_sets,
-    af_settings=af_sets,
     measure_settings=measure_sets,
     server_settings=server_sets,
     control_settings=control_sets,

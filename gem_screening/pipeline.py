@@ -29,7 +29,7 @@ def complete_pipeline(settings: PipelineSettings) -> None:
         return
     
     # Generate the dish_grid
-    dish_grid = launch_dish_workflow(a1_manager, run_dir, **settings.dish_sets.model_dump())
+    dish_grid = launch_dish_workflow(a1_manager, run_dir, **settings.dish_settings.model_dump())
     logger.info(f"Generated dish grid: {dish_grid}")
     
     # Run the pipeline workflow, lazy import to ensure all environment variables are set before importing
@@ -66,18 +66,12 @@ def _initialize_pipeline(settings: PipelineSettings) -> tuple[A1Manager, Path, l
     
     # Log the run directory and run ID
     run_id = make_run_id()
+    logger.info("=" * 80)
     logger.info(f"Created run directory: {run_dir} with run ID: {run_id}")
     return a1_manager,run_dir,logger,run_id
 
        
 if __name__ == '__main__':
-    from time import sleep
-    def fake_main():
-        # Lazy import to make sure all env vars are set before importing
-        from cp_server import ComposeManager
-        with ComposeManager():
-            print("Starting the complete pipeline...")
-            # resp = input("Press Enter to continue or Ctrl+C to exit...")
-            sleep(10)
-            print("Pipeline started successfully.")
-    fake_main()
+    from gem_screening.utils.settings.settings import full_settings
+    
+    complete_pipeline(full_settings)

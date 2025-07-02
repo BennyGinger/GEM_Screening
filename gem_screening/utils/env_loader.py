@@ -32,15 +32,11 @@ def load_pipeline_env(
     ) -> None:
     
     """
-    Load environment variables for the pipeline from a .env file.
-    If the .env file does not exist, it creates a template and raises an error.
-    The .env file will be saved either in `C:\Users\<YourUserName>\AppData\Roaming\gem_screening`
-    on Windows or in `~/.config/gem_screening` on Linux/macOS.
     This function sets the following environment variables:
     - BASE_URL: URL for the servers
     - LOG_LEVEL: Logging level for the application
-    - LOGFILE_NAME: Name of the log file   
-    - HOST_LOG_FOLDER: Directory where logs will be stored
+    - LOGFILE_NAME: Name of the log file
+    - HOST_DIR: Directory where the experiment data will be stored, mounted in the Docker container
     Args:
         base_url (str, optional): base URL for the servers. Defaults to `localhost`.
         log_level (str, optional): Logging level to set. Defaults to `INFO`.

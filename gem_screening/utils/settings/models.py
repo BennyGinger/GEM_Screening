@@ -1,3 +1,4 @@
+from pathlib import Path
 from pydantic import BaseModel, ConfigDict
 
 
@@ -29,26 +30,26 @@ class DishSettings(BaseModel):
     Pydantic model for Settings for the dish used in the imaging process.
     Attributes:
         dish_name (str, optional): Name of the dish, e.g., '35mm', 'ibidi-8well', or '96well'. Defaults to '35mm'.
-        overwrite_calib (bool, optional): If True, will overwrite the calibration file for the dish. Defaults to False.
         well_selection (list[str], optional): List of wells to image, e.g., ['A1', 'A2']. If 'all', will image all possible wells. Defaults to ['A1'].
+        method (str, optional): Method for autofocus, e.g., 'sq_grad' or 'Manual'. Defaults to 'sq_grad'.
+        overwrite_autofocus (bool, optional): If True, will overwrite the autofocus settings. Defaults to False.
+        dmd_window_only (bool, optional): If True, will only use the DMD window for measurement. Defaults to True.
         numb_field_view (int, optional): Number of field views to image. If None, will run the whole well.
         overlap_percent (float, optional): Overlap percentage for field views. If None, will use optimal overlap for the dish.
+        overwrite_calib (bool, optional): If True, will overwrite the calibration file. Defaults to False.
+        af_savedir (Path, optional): Directory to save the autofocus images. Only applicable for the square gradient method. Defaults to None.
+        n_corners_in (int, optional): Number of corners of each fov that should be contained within a round well at the edges. Defaults to 4.
     """
     dish_name: str = '35mm'
-    overwrite_calib: bool = False
     well_selection: list[str] = ['A1']
+    af_method: str = 'sq_grad'
+    dmd_window_only: bool = True
     numb_field_view: int | None = None
     overlap_percent: float | None = None
-
-class AutofocusSettings(BaseModel):
-    """
-    Pydantic model for Settings for autofocus during the imaging process.
-    Attributes:
-        method (str, optional): Method for autofocus, e.g., 'sq_grad' or 'Manual'. Defaults to 'sq_grad'.
-        overwrite (bool, optional): If True, will overwrite the autofocus settings. Defaults to False.
-    """
-    method: str = 'sq_grad'
-    overwrite: bool = False
+    overwrite_autofocus: bool = False
+    overwrite_calib: bool = False
+    af_savedir: Path | None = None
+    n_corners_in: int = 4  
 
 class PresetMeasure(BaseModel):
     """
@@ -198,8 +199,7 @@ class PipelineSettings(BaseModel):
         base_url (str): Base URL for the servers, defaults to `localhost`.
         logging_settings (LoggingSettings): Settings for logging configuration.
         acquisition_settings (AcquisitionSettings): Settings for the aquisition process.
-        dish_settings (DishSettings): Settings for the dish used in the imaging process.
-        af_settings (AutofocusSettings): Settings for autofocus during the imaging process.
+        dish_settings (DishSettings): Settings for the dish used in the imaging process, including the dish name, well selection, and autofocus method.
         measure_settings (MeasureSettings): Settings for measurement and reference segmentation.
         server_settings (ServerSettings): Settings for the segmentation and tracking server.
         control_settings (ControlSettings): Settings for control imaging before and after light stimulation.
@@ -211,7 +211,6 @@ class PipelineSettings(BaseModel):
     logging_settings: LoggingSettings
     acquisition_settings: AcquisitionSettings
     dish_settings: DishSettings
-    af_settings: AutofocusSettings
     measure_settings: MeasureSettings
     server_settings: ServerSettings
     control_settings: ControlSettings

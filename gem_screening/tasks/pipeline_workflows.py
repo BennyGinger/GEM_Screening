@@ -16,7 +16,6 @@ from gem_screening.utils.settings.models import PipelineSettings
 from gem_screening.well_data.well_classes import Well
 
 
-
 logger = logging.getLogger(__name__)
 
 def run_pipeline(dish_grid: dict[str, dict[str, StageCoord]],
