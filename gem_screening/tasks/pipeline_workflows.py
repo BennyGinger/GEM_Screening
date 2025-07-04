@@ -18,7 +18,7 @@ from gem_screening.well_data.well_classes import Well
 
 logger = logging.getLogger(__name__)
 
-def run_pipeline(dish_grid: dict[str, dict[str, StageCoord]],
+def run_pipeline(dish_grid: dict[str, dict[int, StageCoord]],
                   a1_manager: A1Manager,
                   run_dir: Path,
                   run_id: str,
@@ -59,7 +59,7 @@ def run_pipeline(dish_grid: dict[str, dict[str, StageCoord]],
                 break
             
             # Execute well analysis
-            _execute_well_analysis(a1_manager, settings, well, well_obj)
+            _execute_well_analysis(a1_manager, settings, well_obj)
             
             logger.info(f"Completed processing for well: {well}")
 
@@ -124,11 +124,11 @@ def after_acquisition_rescue(a1_manager: A1Manager,
         # Loop through each well object and process the images
         for well_obj in well_objs:
             fovs = well_obj.positive_fovs
-            # Get the images to be processed
-            measure_paths = sorted([fov.tiff_paths[MEASURE_LABEL] for fov in fovs])
+            # Get the images to be processed by flattening the lists of Paths
+            measure_paths = sorted([img for fov in fovs for img in fov.tiff_paths[MEASURE_LABEL]])
             
             if settings.measure_settings.do_refseg:
-                refseg_paths = sorted([fov.tiff_paths[REFSEG_LABEL] for fov in fovs])
+                refseg_paths = sorted([img for fov in fovs for img in fov.tiff_paths[REFSEG_LABEL]])
                 
                 # Send measure images for background removal
                 for img_path in measure_paths:

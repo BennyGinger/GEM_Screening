@@ -116,7 +116,7 @@ def image_all_fov(well_obj: Well, a1_manager: A1Manager, settings: PipelineSetti
     # Save the well object
     well_obj.to_json()
 
-class QuitImageCapture:
+class QuitImageCapture(Exception):
     """
     Raised when the user wants to quit the image capture process.
     """

@@ -34,7 +34,7 @@ def complete_pipeline(settings: PipelineSettings) -> None:
     
     # Run the pipeline workflow, lazy import to ensure all environment variables are set before importing
     from gem_screening.tasks.pipeline_workflows import run_pipeline
-    run_pipeline(dish_grid, logger, run_dir, run_id, settings, a1_manager)
+    run_pipeline(dish_grid, a1_manager, run_dir, run_id, settings)
     
     logger.info("Pipeline completed successfully.")
 
