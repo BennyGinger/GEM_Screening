@@ -31,7 +31,7 @@ def extract_measure_intensities(fovs: list[FieldOfView],
         max_workers (int | None): Maximum number of workers to use for parallel processing. Defaults to None, which lets the executor decide based on available resources.
     """
     # Bind the threshold into a worker
-    worker = partial(_create_regionprops, true_cell_threshold=true_cell_threshold)
+    worker = lambda fov: _create_regionprops(fov, true_cell_threshold)
     
     # Run the worker in parallel over all FOVs
     region_dfs = parallel_progress_bar(
@@ -42,7 +42,7 @@ def extract_measure_intensities(fovs: list[FieldOfView],
         desc="Extracting region properties")
     
     # Concatenate all the DataFrames
-    df = pd.concat(region_dfs, ignore_index=True)
+    df = pd.concat([df for df in region_dfs if isinstance(df, pd.DataFrame)], ignore_index=True)
     # TODO: Change that to parquet
     df.to_csv(csv_path, index=False)
     logger.info(f"Extracted region properties for {len(fovs)} FOVs and saved to {csv_path}.")
@@ -62,18 +62,29 @@ def update_control_intensities(fovs: list[FieldOfView],
     """
     # Build (fov, subdf) tuples by filtering on cell_id prefix
     df_ori = pd.read_csv(csv_path)
-    tasks = [(fov, df_ori[df_ori[FOV_ID] == fov.fov_id].copy())
-        for fov in fovs]
+    tasks: list[tuple[FieldOfView, pd.DataFrame]] = [
+        (fov, df_ori[df_ori[FOV_ID] == fov.fov_id].copy())
+        for fov in fovs
+    ]
+    
+    # Typed worker that accepts a (FieldOfView, DataFrame) tuple and forwards to _update_regionprops
+    # run_parallel expects the function to return the same type as its input, so return a (fov, DataFrame) tuple.
+    def _worker(task: tuple[FieldOfView, pd.DataFrame]) -> tuple[FieldOfView, pd.DataFrame]:
+        fov, subdf = task
+        updated = _update_regionprops(fov, subdf)
+        return (fov, updated)
     
     # Run the worker in parallel over all FOVs
-    sub_dfs = parallel_progress_bar(
-        lambda x: _update_regionprops(*x),
+    results = parallel_progress_bar(
+        _worker,
         tasks,
         executor=executor,
         max_workers=max_workers,
-        desc="Updating region properties with control images")
+        desc="Updating region properties with control images",
+    )
     
-    # Concatenate all the DataFrames
+    # Extract the DataFrames from the results and concatenate them
+    sub_dfs = [res[1] for res in results if isinstance(res, tuple) and isinstance(res[1], pd.DataFrame)]
     df = pd.concat(sub_dfs, ignore_index=True)
     df.to_csv(csv_path, index=False)
     logger.info(f"Updated region properties with control images for {len(fovs)} FOVs and saved to {csv_path}.")
@@ -157,8 +168,27 @@ def _regionprops_wrapper(fov: FieldOfView, is_control: bool) -> tuple[dict[str, 
         propn = ['label', 'mean_intensity', 'centroid']
     
     # Load the images and masks for the FOV
-    img0, imgn = fov.load_images(img_cat)
-    mask0, maskn = fov.load_images(mask_cat)
+    img_list = fov.load_images(img_cat)
+    mask_list = fov.load_images(mask_cat)
+    
+    logger.debug(f"FOV {fov.fov_id}: Found {len(img_list)} images and {len(mask_list)} masks")
+    logger.debug(f"FOV {fov.fov_id}: Available tiff paths: {fov.tiff_paths}")
+    
+    if len(img_list) != 2:
+        raise ValueError(f"Expected 2 images for FOV {fov.fov_id}, got {len(img_list)}")
+    
+    # Handle different mask scenarios
+    if is_control and len(mask_list) == 1:
+        # For control analysis with stimulation masks, use the single stim mask for both timepoints
+        logger.debug(f"FOV {fov.fov_id}: Using single stim mask for both control timepoints")
+        mask0 = maskn = mask_list[0]
+    elif len(mask_list) == 2:
+        # Normal case: 2 masks for 2 timepoints
+        mask0, maskn = mask_list
+    else:
+        raise ValueError(f"Expected 1 or 2 masks for FOV {fov.fov_id}, got {len(mask_list)}")
+    
+    img0, imgn = img_list
     logger.debug(f"Loaded image stack shape: {img0.shape}, mask stack shape: {mask0.shape} for FOV {fov.fov_id}.")
     
     # Extract the properties of each frame

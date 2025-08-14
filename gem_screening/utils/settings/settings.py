@@ -11,7 +11,7 @@ base_url = 'localhost'
 
 # Set up logging settings
 logging_sets = LoggingSettings(
-                    log_level='INFO',
+                    log_level='DEBUG',
                     logfile_name='gem_screening.log',)
 
 # Aquisition settings for the microscope
