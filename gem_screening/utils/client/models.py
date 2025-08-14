@@ -1,8 +1,28 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from gem_screening.utils.pipeline_constants import BG_SETS, CP_SETS
 from gem_screening.utils.settings.models import ServerSettings
+
+def _transform_path_for_container(img_path: Path) -> str:
+    """Transform a Windows path to the corresponding Docker container path."""
+    import os
+    host_dir = os.getenv("HOST_DIR")
+    if not host_dir:
+        raise ValueError("HOST_DIR environment variable must be set")
+    
+    host_path = Path(host_dir)
+    img_path = img_path.resolve()
+    host_path = host_path.resolve()
+    
+    try:
+        relative_path = img_path.relative_to(host_path)
+    except ValueError as e:
+        raise ValueError(f"Path {img_path} is not within HOST_DIR {host_path}") from e
+    
+    container_path = "/data/" + str(relative_path).replace("\\", "/")
+    return container_path
 
 
 @dataclass
@@ -19,7 +39,7 @@ class BackgroundPayload():
     sigma: float = 0.0
     size: int = 7
 
-@dataclass
+@dataclass(kw_only=True) # To allow non-default values after inheritance of default values from BackgroundPayload
 class ProcessPayload(BackgroundPayload):
     """
     Payload Model for the `/process` endpoint.
@@ -39,12 +59,12 @@ class ProcessPayload(BackgroundPayload):
         track_stitch_threshold (float, optional): Threshold for stitching masks during tracking. Default to 0.75.
         round (int): The round number for processing, build from the image path if not provided. Defaults to None.
     """
-    cellpose_settings: dict[str, Any]
+    cellpose_settings: dict[str, Any] = field(default_factory=dict)
     dst_folder: str
     well_id: str
     total_fovs: int
     track_stitch_threshold: float = 0.75
-    round: int = None
+    round: int | None = None
 
 def build_payload(img_path: str, 
                    server_settings: ServerSettings,
@@ -72,10 +92,26 @@ def build_payload(img_path: str,
     # Otherwise, build the full processing payload
     cp_sets = CP_SETS.copy()
     track_stitch_threshold = settings_dict.pop("track_stitch_threshold", 0.75)
-    # These parameters will raise an error in the pydantic model if not provided
-    well_id = settings_dict.pop("well_id", "UnknownRunID")
-    dst_folder = settings_dict.pop("dst_folder", "UnknownFolder")
-    total_fovs = settings_dict.pop("total_fovs", "UnknownTotalFOVs")
+    # Required parameters — raise if missing
+    well_id = settings_dict.pop("well_id", None)
+    dst_folder = settings_dict.pop("dst_folder", None)
+    total_fovs = settings_dict.pop("total_fovs", None)
+
+    missing: list[str] = []
+    if well_id is None:
+        missing.append("well_id")
+    if dst_folder is None:
+        missing.append("dst_folder")
+    if total_fovs is None:
+        missing.append("total_fovs")
+    if missing:
+        raise ValueError(f"Missing required settings for ProcessPayload: {', '.join(missing)}")
+
+    # Normalize types
+    try:
+        total_fovs = int(total_fovs)  # type: ignore[assignment]
+    except Exception as e:
+        raise ValueError(f"total_fovs must be an integer, got {total_fovs!r}") from e
     
     # Extract the different settings parameters
     for sets in (bg_sets, cp_sets):
@@ -83,13 +119,15 @@ def build_payload(img_path: str,
         sets.update(overrides)
     
     # Build the payload
-    return ProcessPayload(img_path=img_path,
-                          dst_folder=str(dst_folder),
-                          well_id=well_id,
-                          total_fovs=total_fovs,
-                          track_stitch_threshold=track_stitch_threshold,
-                          cellpose_settings=cp_sets,
-                          **bg_sets)
+    return ProcessPayload(
+        img_path=img_path,
+        dst_folder=_transform_path_for_container(Path(dst_folder)),
+        well_id=str(well_id),
+        total_fovs=total_fovs,  # int ensured above
+        track_stitch_threshold=track_stitch_threshold,
+        cellpose_settings=cp_sets,
+        **bg_sets,
+    )
                           
 
 

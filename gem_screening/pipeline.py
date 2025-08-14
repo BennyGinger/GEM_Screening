@@ -3,6 +3,7 @@ from pathlib import Path
 import logging
 
 from a1_manager import A1Manager, launch_dish_workflow
+from a1_manager.autofocus.af_utils import QuitAutofocus
 
 from gem_screening.utils.env_loader import load_pipeline_env
 from gem_screening.logger import get_logger, configure_logging
@@ -28,9 +29,13 @@ def complete_pipeline(settings: PipelineSettings) -> None:
     if not prompt_to_continue(FOCUS_PROMPT):
         return
     
-    # Generate the dish_grid
-    dish_grid = launch_dish_workflow(a1_manager, run_dir, **settings.dish_settings.model_dump())
-    logger.info(f"Generated dish grid: {dish_grid}")
+    try:
+        # Generate the dish_grid
+        dish_grid = launch_dish_workflow(a1_manager, run_dir, **settings.dish_settings.model_dump())
+        logger.info(f"Generated dish grid: {dish_grid}")
+    except QuitAutofocus:
+        logger.info("User chose to quit during autofocus. Stopping pipeline.")
+        return
     
     # Run the pipeline workflow, lazy import to ensure all environment variables are set before importing
     from gem_screening.tasks.pipeline_workflows import run_pipeline
@@ -62,7 +67,7 @@ def _initialize_pipeline(settings: PipelineSettings) -> tuple[A1Manager, Path, l
     
     # Set up logging
     configure_logging(run_dir)
-    logger = get_logger(__name__)
+    logger = get_logger("main")
     
     # Log the run directory and run ID
     run_id = make_run_id()

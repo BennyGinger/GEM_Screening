@@ -76,8 +76,8 @@ def image_all_fov(well_obj: Well, a1_manager: A1Manager, settings: PipelineSetti
     
     # Initialize the different steps functions
     snap = partial(_take_image_fov, a1_manager=a1_manager)
-    bg_removal = partial(bg_removal_client, server_settings=server_settings)
-    full_process = partial(full_process_client, server_settings=server_settings)
+    bg_removal = partial(bg_removal_client, server_settings)
+    full_process = partial(full_process_client, server_settings)
     
     # Determine the different steps of the imaging loop
     

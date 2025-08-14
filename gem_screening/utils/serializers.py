@@ -1,4 +1,4 @@
-from dataclasses import asdict, fields, is_dataclass
+from dataclasses import fields, is_dataclass
 import json
 from pathlib import Path
 from typing import Any
@@ -10,29 +10,29 @@ class CustomJSONEncoder(json.JSONEncoder):
     Args:
         json.JSONEncoder: The base JSON encoder class.
     """
-    def default(self, obj: object) -> dict:
+    def default(self, o: object) -> object:
         # Encode any dataclass as a dictionary with a type identifier
-        if is_dataclass(obj):
-            type_name = obj.__class__.__name__
-            d = {f.name: getattr(obj, f.name) for f in fields(obj)}
+        if is_dataclass(o):
+            type_name = type(o).__name__
+            d = {f.name: getattr(o, f.name) for f in fields(o)}
             return { f"__{type_name}__": d }
                   
-        if isinstance(obj, Path):
-            return {"__Path__": {"path": str(obj)}}
+        if isinstance(o, Path):
+            return {"__Path__": {"path": str(o)}}
         
-        if isinstance(obj, tuple):
-            return {"__tuple__": list(obj)}
+        if isinstance(o, tuple):
+            return {"__tuple__": list(o)}
         
         # Fall back to the default JSON encoder for other types
-        return super().default(obj)
+        return super().default(o)
     
-def custom_json_decoder(dct: dict[str, Any]) -> dict[str, Any]:
+def custom_json_decoder(dct: dict[str, Any]) -> Any:
     """
     Custom JSON decoder to handle specific types during deserialization.
     Args:
         dct (dict): The dictionary to decode.
     Returns:
-        dict: The decoded dictionary.
+        Any: The decoded object, which could be a Well, FieldOfView, StageCoord, Path, or tuple.
     """
     # Look for any tagged object (e.g. __Well__, "__FieldOfView__", __StageCoord__, __Path__, __tuple__)
     for key in list(dct):

@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 import json
 from pathlib import Path
 import shutil
+from typing import Any
 
 from a1_manager import StageCoord
 import numpy as np
@@ -12,7 +13,7 @@ import tifffile as tiff
 
 from gem_screening.utils.identifiers import parse_image_filename, parse_category_instance
 from gem_screening.utils.pipeline_constants import CONFIG_FOLDER, DEFAULT_CATEGORIES, DF_FILENAME, IMG_CAT, IMG_FOLDER, MASK_FOLDER, WELL_FOLDER, WELL_OBJ_FILENAME
-from gem_screening.utils.serializers import CustomJSONEncoder, custom_decoder
+from gem_screening.utils.serializers import CustomJSONEncoder, custom_json_decoder
 
 
 @dataclass(slots=True)
@@ -112,14 +113,14 @@ class FieldOfView:
         """
         Get the path to the images directory of this FOV.
         """
-        return self.well_dir.joinpath(IMG_FOLDER)
+        return self.well_dir.joinpath(f"{self.well}_{IMG_FOLDER}")
 
     @property
     def mask_dir(self) -> Path:
         """
         Get the path to the masks directory of this FOV.
         """
-        return self.well_dir.joinpath(MASK_FOLDER)
+        return self.well_dir.joinpath(f"{self.well}_{MASK_FOLDER}")
     
     @classmethod
     def from_dict(cls: type[FieldOfView], data: dict) -> FieldOfView:
@@ -260,7 +261,7 @@ class Well:
         """
         # Read the raw dist
         with open(file_path, 'r') as f:
-            data: dict = json.loads(f.read(), object_hook=custom_decoder)
+            data: dict = json.loads(f.read(), object_hook=custom_json_decoder)
         # Re-convert the well_grid keys to int
         data["well_grid"] = {int(k): v for k,v in data["well_grid"].items()}
         
@@ -270,7 +271,7 @@ class Well:
         return obj
     
     @classmethod
-    def from_dict(cls: type[Well], data: dict) -> Well:
+    def from_dict(cls: type[Well], data: dict[str, Any]) -> Well:
         """
         Reconstruct a Well from its serialized dict, replaying the same
         initialization logic so that all folders, CSV path, and FOVs are set up.

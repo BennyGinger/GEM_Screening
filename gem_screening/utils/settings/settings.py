@@ -11,7 +11,7 @@ base_url = 'localhost'
 
 # Set up logging settings
 logging_sets = LoggingSettings(
-                    log_level='DEBUG',
+                    log_level='INFO',
                     logfile_name='gem_screening.log',)
 
 # Aquisition settings for the microscope
@@ -25,7 +25,7 @@ dish_sets = DishSettings(
                     dish_name='35mm',
                     well_selection=['A1'],
                     af_method='sq_grad',
-                    overwrite_autofocus=False,
+                    overwrite_autofocus=True,
                     overwrite_calib=False,
                     numb_field_view=3,)
 
