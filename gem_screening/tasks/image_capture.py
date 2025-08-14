@@ -11,6 +11,7 @@ from gem_screening.utils.filesystem import imwrite_atomic
 from gem_screening.utils.identifiers import parse_category_instance
 from gem_screening.utils.pipeline_constants import MEASURE_LABEL, REFSEG_LABEL
 from gem_screening.utils.prompts import prompt_to_continue, ADD_LIGAND_PROMPT
+from gem_screening.utils.prompt_gui import PipelineQuit
 from gem_screening.utils.settings.models import PipelineSettings, PresetMeasure, PresetControl, ServerSettings
 from gem_screening.well_data.well_classes import FieldOfView, Well
 
@@ -41,7 +42,10 @@ def scan_cells(well_obj: Well, settings: PipelineSettings, a1_manager: A1Manager
     image_all_fov(well_obj, a1_manager, settings, f"{MEASURE_LABEL}_1")
     
     # Ask user to stimulate cells
-    if not prompt_to_continue(ADD_LIGAND_PROMPT):
+    try:
+        prompt_to_continue(ADD_LIGAND_PROMPT)
+    except PipelineQuit:
+        # Convert to QuitImageCapture to maintain existing error handling
         raise QuitImageCapture
     
     # Second imaging loop, after cell stimulation

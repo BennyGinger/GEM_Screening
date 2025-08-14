@@ -10,6 +10,7 @@ from gem_screening.logger import get_logger, configure_logging
 from gem_screening.utils.filesystem import create_timestamped_dir
 from gem_screening.utils.identifiers import make_run_id
 from gem_screening.utils.prompts import prompt_to_continue, FOCUS_PROMPT
+from gem_screening.utils.prompt_gui import PipelineQuit
 from gem_screening.utils.settings.models import PipelineSettings
 
 
@@ -26,7 +27,10 @@ def complete_pipeline(settings: PipelineSettings) -> None:
     a1_manager, run_dir, logger, run_id = _initialize_pipeline(settings)
     
     # Prompt user to focus on cells
-    if not prompt_to_continue(FOCUS_PROMPT):
+    try:
+        prompt_to_continue(FOCUS_PROMPT)
+    except PipelineQuit:
+        logger.info("User chose to quit during focus prompt. Stopping pipeline.")
         return
     
     try:
@@ -39,7 +43,11 @@ def complete_pipeline(settings: PipelineSettings) -> None:
     
     # Run the pipeline workflow, lazy import to ensure all environment variables are set before importing
     from gem_screening.tasks.pipeline_workflows import run_pipeline
-    run_pipeline(dish_grid, a1_manager, run_dir, run_id, settings)
+    try:
+        run_pipeline(dish_grid, a1_manager, run_dir, run_id, settings)
+    except PipelineQuit:
+        logger.info("User chose to quit during pipeline execution. Stopping pipeline.")
+        return
     
     logger.info("Pipeline completed successfully.")
 

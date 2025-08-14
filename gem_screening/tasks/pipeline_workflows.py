@@ -6,6 +6,7 @@ from cp_server import ComposeManager
 
 from gem_screening.tasks.data_intensity import extract_measure_intensities, update_control_intensities
 from gem_screening.tasks.image_capture import QuitImageCapture, scan_cells
+from gem_screening.utils.prompt_gui import PipelineQuit
 from gem_screening.tasks.light_stimulation import create_stim_masks, illuminate_fovs
 from gem_screening.tasks.mask_utils import assign_masks_to_fovs
 from gem_screening.utils.client.client import bg_removal_client, cleanup_stale, full_process_client, wait_for_completion
@@ -57,6 +58,9 @@ def run_pipeline(dish_grid: dict[str, dict[int, StageCoord]],
             except QuitImageCapture:  
                 logger.info("User chose to quit the image capture process.")
                 break
+            except PipelineQuit:
+                logger.info("User chose to quit the pipeline during image capture.")
+                raise
             
             # Execute well analysis
             _execute_well_analysis(a1_manager, settings, well_obj)

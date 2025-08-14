@@ -15,6 +15,7 @@ dependencies = [
     { name = "matplotlib" },
     { name = "opencv-python" },
     { name = "pycromanager" },
+    { name = "pyqt6" },
     { name = "python-tsp" },
     { name = "scikit-image" },
     { name = "tifffile" },
@@ -25,6 +26,7 @@ requires-dist = [
     { name = "matplotlib", specifier = ">=3.10.1" },
     { name = "opencv-python", specifier = ">=4.11.0.86" },
     { name = "pycromanager", specifier = ">=1.0.1" },
+    { name = "pyqt6", specifier = ">=6.9.1" },
     { name = "python-tsp", specifier = ">=0.2.0" },
     { name = "scikit-image", specifier = ">=0.25.2" },
     { name = "tifffile", specifier = ">=2025.2.18" },
@@ -469,6 +471,7 @@ dependencies = [
     { name = "cp-server" },
     { name = "progress-bar" },
     { name = "pydantic" },
+    { name = "pyqt6" },
 ]
 
 [package.metadata]
@@ -478,6 +481,7 @@ requires-dist = [
     { name = "cp-server", editable = "../CP_server" },
     { name = "progress-bar", editable = "../Progress_bar" },
     { name = "pydantic", specifier = ">=2.11.6" },
+    { name = "pyqt6", specifier = ">=6.9.1" },
 ]
 
 [[package]]
