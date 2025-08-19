@@ -36,7 +36,8 @@ def complete_pipeline(settings: PipelineSettings) -> None:
     try:
         # Generate the dish_grid
         dish_grid = launch_dish_workflow(a1_manager, run_dir, **settings.dish_settings.model_dump())
-        logger.info(f"Generated dish grid: {dish_grid}")
+        logger.info(f"Generated dish grid")
+        logger.debug(f"dish_grid: {dish_grid}")
     except QuitAutofocus:
         logger.info("User chose to quit during autofocus. Stopping pipeline.")
         return
