@@ -30,7 +30,7 @@ class DishSettings(BaseModel):
     Pydantic model for Settings for the dish used in the imaging process.
     Attributes:
         dish_name (str, optional): Name of the dish, e.g., '35mm', 'ibidi-8well', or '96well'. Defaults to '35mm'.
-        well_selection (list[str], optional): List of wells to image, e.g., ['A1', 'A2']. If 'all', will image all possible wells. Defaults to ['A1'].
+        well_selection (str | list[str], optional): Well name or list of wells to image, e.g., ['A1', 'A2']. If 'all', will image all possible wells. Defaults to ['A1'].
         method (str, optional): Method for autofocus, e.g., 'sq_grad' or 'Manual'. Defaults to 'sq_grad'.
         overwrite_autofocus (bool, optional): If True, will overwrite the autofocus settings. Defaults to False.
         dmd_window_only (bool, optional): If True, will only use the DMD window for measurement. Defaults to True.
@@ -41,7 +41,7 @@ class DishSettings(BaseModel):
         n_corners_in (int, optional): Number of corners of each fov that should be contained within a round well at the edges. Defaults to 4.
     """
     dish_name: str = '35mm'
-    well_selection: list[str] = ['A1']
+    well_selection: str | list[str] = ['A1']
     af_method: str = 'sq_grad'
     dmd_window_only: bool = True
     numb_field_view: int | None = None
@@ -130,7 +130,7 @@ class StimSettings(BaseModel):
     """
     Pydantic model for Settings for stimulation masks.
     Attributes:
-        true_cell_threshold (int, optional): Threshold for true cell detection. Below this value, cells are considered noise and set to 0 in the output. Defaults to 50.
+        true_cell_threshold (int, optional): Mean intensity threshold for true cell detection. Below this value, cells are considered noise and set to 0 in the output. Defaults to 50.
         crop_size (int, optional): Size of the crop for the display of the ROI, for the CellTinder GUI, to select positive cells. Defaults to 251.
         erosion_factor (int, optional): Erosion factor for the stimulation masks to avoid stimulation of neighboring cells. Defaults to 3.
         preset (PresetStim): Preset settings for light stimulation.
@@ -148,12 +148,12 @@ class ServerSettings(BaseModel):
     Attributes:
         sigma (float, optional): Sigma value for background subtraction. Defaults to 0.
         size (int, optional): Size parameter for background subtraction. Defaults to 7.
-        do_denoise (bool, optional): If True, will use the denoising model. Defaults to True.
-        model_type (str, optional): Type of the Cellpose model, e.g., 'cyto2', 'cyto3'. Defaults to 'cyto2'.
-        restore_type (str, optional): Type of restoration for the Cellpose model, e.g., 'denoise_cyto2', 'denoise_cyto3'. Defaults to 'denoise_cyto2'.
+        do_denoise (bool, optional): If True, will use the denoising model. Defaults to True. Deprecated in cellpose>=4.0, parameter will be ignored.
+        model_type (str, optional): Type of the Cellpose model, e.g., 'cyto2', 'cyto3'. Defaults to 'cpsam'.
+        restore_type (str, optional): Type of restoration for the Cellpose model, e.g., 'denoise_cyto2', 'denoise_cyto3'. Defaults to 'denoise_cyto3'. Deprecated in cellpose>=4.0, parameter will be ignored.
         gpu (bool, optional): If True, will use GPU for processing. Defaults to True.
-        channels (list[int], optional): List of channels to use for segmentation. Defaults to None.
-        diameter (int, optional): Diameter for segmentation, e.g., 40 or 60. Defaults to 40.
+        channels (list[int], optional): List of channels to use for segmentation. Defaults to None. Deprecated in cellpose>=4.0, parameter will be ignored.
+        diameter (int, optional): Diameter for segmentation, e.g., 40 or 60. Defaults to 40. Deprecated in cellpose>=4.0, parameter will be ignored.
         flow_threshold (float, optional): Flow threshold for segmentation. Defaults to 1.
         cellprob_threshold (float, optional): Cell probability threshold for segmentation. Defaults to 0.
         z_axis (int, optional): Z-axis index for 3D segmentation. Defaults to None.
@@ -171,8 +171,8 @@ class ServerSettings(BaseModel):
     sigma: float = 0.0
     size: int = 7
     do_denoise: bool = True
-    model_type: str = 'cyto2'
-    restore_type: str = 'denoise_cyto2'
+    model_type: str = 'cpsam'
+    restore_type: str = 'denoise_cyto3'
     gpu: bool = True
     channels: list[int] | None = None
     diameter: int = 40
