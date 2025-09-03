@@ -1,5 +1,5 @@
 from pathlib import Path
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class LoggingSettings(BaseModel):
@@ -167,18 +167,18 @@ class ServerSettings(BaseModel):
         - `total_fovs` (int) is set by the pipeline to specify the total number of fields of view.
     """
     ## Set by user ##
-    server_timeout_sec: float = 600.0 # 10 minutes
+    server_timeout_sec: float = Field(default=600.0, exclude=True)  # 10 minutes - excluded from model dumps
     sigma: float = 0.0
     size: int = 7
     do_denoise: bool = True
     model_type: str = 'cyto2'
     restore_type: str = 'denoise_cyto2'
     gpu: bool = True
-    channels: list[int] = None
+    channels: list[int] | None = None
     diameter: int = 40
     flow_threshold: float = 1.0
     cellprob_threshold: float = 0.0
-    z_axis: int = None
+    z_axis: int | None = None
     do_3D: bool = False
     stitch_threshold_3D: float = 0.0
     track_stitch_threshold: float = 0.75
@@ -187,8 +187,6 @@ class ServerSettings(BaseModel):
     well_id: str = ''
     dst_folder: str = ''
     total_fovs: int = 0
-    
-    model_config = ConfigDict(model_dump_exclude={"server_timeout_sec"})
     
 class PipelineSettings(BaseModel):
     """

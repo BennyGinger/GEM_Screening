@@ -51,8 +51,8 @@ def load_pipeline_env(
     # Expose LOG_LEVEL
     os.environ["LOG_LEVEL"] = log_level
 
-    # expose LOGFILE_NAME
-    os.environ["LOGFILE_NAME"] = logfile_name
+    # expose LOGFILE_NAME for Docker containers (use separate file name)
+    os.environ["LOGFILE_NAME"] = "task_servers.log"
     
 
 

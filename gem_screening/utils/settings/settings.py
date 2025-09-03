@@ -4,14 +4,14 @@ from gem_screening.utils.settings.models import AcquisitionSettings, DishSetting
 savedir = r'D:\Ben'
 
 # Name for the experiment folder, timestamp will be added as prefix
-savedir_name = 'test_gem_screening'
+savedir_name = 'test_pipeline'
 
 # base_url for the servers, `localhost` or a remote server (e.g. `10.114.104.21`)
 base_url = 'localhost'
 
 # Set up logging settings
 logging_sets = LoggingSettings(
-                    log_level='DEBUG',
+                    log_level='INFO',
                     logfile_name='gem_screening.log',)
 
 # Aquisition settings for the microscope

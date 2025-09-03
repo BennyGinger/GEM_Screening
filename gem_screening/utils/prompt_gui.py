@@ -137,18 +137,9 @@ try:
             window.show()
             
             # Use polling instead of exec() to avoid conflicts
-            start_time = time.time()
-            timeout = 300  # 5 minutes timeout
-            
             while window.result is None:
                 app.processEvents()
                 time.sleep(0.01)  # Small delay to prevent CPU spinning
-                
-                # Check for timeout
-                if time.time() - start_time > timeout:
-                    logger.warning("Prompt GUI timed out after 5 minutes")
-                    window.close()
-                    break
             
             result = window.result
             window.close()
@@ -158,7 +149,7 @@ try:
             elif result == "continue":
                 return True
             else:
-                # Timeout or unexpected result - default to continue
+                # Unexpected result - default to continue
                 logger.warning("Unexpected prompt result, defaulting to continue")
                 return True
                 
@@ -182,18 +173,9 @@ try:
             window.show()
             
             # Use polling instead of exec() to avoid conflicts
-            start_time = time.time()
-            timeout = 300  # 5 minutes timeout
-            
             while window.result is None:
                 app.processEvents()
                 time.sleep(0.01)  # Small delay to prevent CPU spinning
-                
-                # Check for timeout
-                if time.time() - start_time > timeout:
-                    logger.warning("Prompt GUI timed out after 5 minutes")
-                    window.close()
-                    break
             
             result = window.result
             window.close()
@@ -203,7 +185,7 @@ try:
             elif result == "continue":
                 return True
             else:
-                # Timeout or unexpected result - default to continue
+                # Unexpected result - default to continue
                 logger.warning("Unexpected prompt result, defaulting to continue")
                 return True
                 

@@ -50,6 +50,8 @@ def configure_logging(run_dir: Path):
                 "maxBytes": MAX_BYTES,
                 "backupCount": BACKUP_COUNT,
                 "encoding": "utf-8",
+                # Add delay to prevent file locking issues with Docker containers
+                "delay": True,
             },
         },
 

@@ -102,7 +102,7 @@ def _send_to_process_bg_sub(payload: BackgroundPayload) -> None:
     resp = requests.post(url, json=asdict(payload), timeout=10)
     resp.raise_for_status()
     task_id = resp.json()  # This endpoint returns just the task ID as a string
-    logger.info(f"Enqueued background subtraction task {task_id} for {payload.img_path}.")
+    logger.debug(f"Enqueued background subtraction task {task_id} for {payload.img_path}.")
 
 def _send_to_process(payload: ProcessPayload | BackgroundPayload) -> None:
     """
@@ -114,7 +114,7 @@ def _send_to_process(payload: ProcessPayload | BackgroundPayload) -> None:
     resp = requests.post(url, json=asdict(payload), timeout=10)
     resp.raise_for_status()
     data = resp.json()
-    logger.info(f"Enqueued task {data['task_ids']} under well_id {data['well_id']}")
+    logger.debug(f"Enqueued task {data['task_ids']} under well_id {data['well_id']}")
 
 def wait_for_completion(well_id: str,
                         poll_interval: float = 1.,

@@ -42,9 +42,12 @@ def scan_cells(well_obj: Well, settings: PipelineSettings, a1_manager: A1Manager
     image_all_fov(well_obj, a1_manager, settings, f"{MEASURE_LABEL}_1")
     
     # Ask user to stimulate cells
+    logger.info("Prompting user for cell stimulation...")
     try:
         prompt_to_continue(ADD_LIGAND_PROMPT)
+        logger.info("User chose to continue with cell stimulation.")
     except PipelineQuit:
+        logger.info("User chose to quit during stimulation prompt.")
         # Convert to QuitImageCapture to maintain existing error handling
         raise QuitImageCapture
     
@@ -150,7 +153,7 @@ def _take_image_fov(fov_obj: FieldOfView, input_preset: PresetMeasure | PresetCo
     # Save image
     img_path = fov_obj.register_img_file(imaging_loop)
     imwrite_atomic(img_path, img.astype('uint16'))
-    logger.info(f"Image saved at {img_path}")
+    logger.debug(f"Image saved at {img_path}")
     
     # Build the payload for the image processing request
     return img_path
