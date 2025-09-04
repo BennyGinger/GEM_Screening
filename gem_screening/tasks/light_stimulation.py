@@ -45,8 +45,12 @@ def create_stim_masks(well_obj: Well,
     # build a list of (fov, subdf) tasks
     tasks = [(fov, data[data[FOV_ID] == fov.fov_id]) for fov in well_obj.positive_fovs]
     
+    def process_task(args):
+        fov, subdf = args
+        return _process_one_fov(fov, subdf, erosion_factor=erosion_factor)
+    
     parallel_progress_bar(
-        lambda args: _process_one_fov(*args, erosion_factor=erosion_factor),
+        process_task,
         tasks,
         desc="Creating stimulation masks",
         executor=executor,
@@ -149,7 +153,10 @@ def _erode_mask(mask: NDArray[T], erosion_factor: int) -> NDArray[T]:
         Eroded mask as a 2D integer array.
     """
     pat_ero = morph.disk(erosion_factor)
-    return np.array(cv2.erode(mask, pat_ero)).astype(mask.dtype)
+    # Convert mask to uint8 for cv2.erode, then convert back to original dtype
+    mask_uint8 = mask.astype(np.uint8)
+    eroded_uint8 = cv2.erode(mask_uint8, pat_ero.astype(np.uint8))
+    return eroded_uint8.astype(mask.dtype)  # type: ignore[return-value]
 
 def _filter_labels(mask: NDArray[T], process: list[bool]) -> NDArray[T]:
     """
@@ -166,5 +173,7 @@ def _filter_labels(mask: NDArray[T], process: list[bool]) -> NDArray[T]:
     # Build LUT of size max_label+1
     lut = np.zeros(max_label + 1, dtype=mask.dtype)
     # process[i] corresponds to label i+1, so:
-    lut[1:] = np.arange(1, max_label + 1) * np.array(process, dtype=mask.dtype)
-    return lut[mask]
+    arange_vals = np.arange(1, max_label + 1, dtype=np.int32)
+    process_array = np.array(process, dtype=np.int32)
+    lut[1:] = (arange_vals * process_array).astype(mask.dtype)
+    return lut[mask.astype(np.intp)]  # type: ignore[return-value]

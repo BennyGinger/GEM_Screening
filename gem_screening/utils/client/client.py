@@ -147,7 +147,7 @@ def wait_for_completion(well_id: str,
     remaining = total
 
     tqdm_class = get_corresponding_tqdm()
-    pbar: Any = tqdm_class(total=total, desc=f"Run {well_id}", unit="fov")
+    pbar: Any = tqdm_class(total=total, desc=f"Remaining images to be processed", unit="fov")
 
     # Keep track of the start time
     start_time = time.monotonic()
