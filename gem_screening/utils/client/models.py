@@ -66,6 +66,27 @@ class ProcessPayload(BackgroundPayload):
     track_stitch_threshold: float = 0.75
     round: int | None = None
 
+
+@dataclass
+class RegisterMaskPayload:
+    """
+    Payload Model for the `/register_mask` endpoint.
+    This model is used to register a single mask to Redis and optionally trigger tracking.
+    
+    Attributes:
+        well_id (str): Unique identifier for the processing well.
+        mask_path (str): Path to the mask file (container path).
+        total_fovs (int): Total number of FOVs (used for pending counter initialization).
+        track_stitch_threshold (float): Threshold for stitching masks during tracking. Default to 0.75.
+    """
+    well_id: str
+    mask_path: str
+    total_fovs: int
+    track_stitch_threshold: float = 0.75
+
+
+    
+
 def build_payload(img_path: str, 
                    server_settings: ServerSettings,
                    *,

@@ -12,7 +12,7 @@ from progress_bar import run_parallel as parallel_progress_bar
 from progress_bar import setup_progress_monitor as progress_bar
 
 from gem_screening.utils.pipeline_constants import PROCESS, FOV_ID, MASK_LABEL, STIM_LABEL, CONTROL_LABEL
-from gem_screening.tasks.image_capture import image_all_fov
+from gem_screening.tasks.image_capture import image_fovs
 from gem_screening.utils.filesystem import imwrite_atomic
 from gem_screening.utils.settings.models import PipelineSettings, PresetStim
 from gem_screening.well_data.well_classes import FieldOfView, Well
@@ -72,7 +72,7 @@ def illuminate_fovs(well_obj: Well, a1_manager: A1Manager, settings: PipelineSet
     
     # control loop before illumination
     if do_control:
-        image_all_fov(well_obj, a1_manager, settings, f"{CONTROL_LABEL}_1")
+        image_fovs(well_obj, a1_manager, settings, f"{CONTROL_LABEL}_1")
         logger.info("Captured control images before illumination.")
     
     # Illuminate all FOVs
@@ -81,7 +81,7 @@ def illuminate_fovs(well_obj: Well, a1_manager: A1Manager, settings: PipelineSet
     
     # control loop after illumination
     if do_control:
-        image_all_fov(well_obj, a1_manager, settings, f"{CONTROL_LABEL}_2")
+        image_fovs(well_obj, a1_manager, settings, f"{CONTROL_LABEL}_2")
         logger.info("Captured control images after illumination.")
 
 ################## Helper Functions ##################

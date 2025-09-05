@@ -9,9 +9,7 @@ from progress_bar import setup_progress_monitor as progress_bar
 from gem_screening.utils.client.client import bg_removal_client, full_process_client
 from gem_screening.utils.filesystem import imwrite_atomic
 from gem_screening.utils.identifiers import parse_category_instance
-from gem_screening.utils.pipeline_constants import MEASURE_LABEL, REFSEG_LABEL
-from gem_screening.utils.prompts import prompt_to_continue, ADD_LIGAND_PROMPT
-from gem_screening.utils.prompt_gui import PipelineQuit
+from gem_screening.utils.pipeline_constants import REFSEG_LABEL
 from gem_screening.utils.settings.models import PipelineSettings, PresetMeasure, PresetControl, ServerSettings
 from gem_screening.well_data.well_classes import FieldOfView, Well
 
@@ -20,46 +18,36 @@ from gem_screening.well_data.well_classes import FieldOfView, Well
 logger = logging.getLogger(__name__)
 
 
-def scan_cells(well_obj: Well, settings: PipelineSettings, a1_manager: A1Manager) -> None:
+def _get_fovs_from_ids(well_obj: Well, fov_ids: list[str]) -> list[FieldOfView]:
     """
-    Main function to scan cells in a well. It takes images of all the field of views in the well and saves them.
-    The images are then sent to the server for processing, which includes background subtraction, segmentation, and tracking.
-    The function performs two imaging loops:
-    1. The first imaging loop captures images of the cells in the well.
-    2. The user is prompted to stimulate the cells after the first imaging loop.
-    3. If the user chooses to continue, a second imaging loop captures images after the stimulation.
-    4. If the user chooses to quit, a QuitImageCapture exception is raised and the process is terminated.
-    The well object is saved after the imaging loops.
+    Convert a list of FOV ID strings to FieldOfView objects from the well.
+    
     Args:
         well_obj (Well): The well object containing the field of views.
-        settings (PipelineSettings): The settings for the imaging pipeline.
-        a1_manager (A1Manager): The A1Manager object to control the microscope.
-    Raises:
-        QuitImageCapture: If the user wants to quit the image capture process.
-    """
-    
-    logger.info(f"Start imaging for well ID {well_obj.well_id}, round 1")
-    image_all_fov(well_obj, a1_manager, settings, f"{MEASURE_LABEL}_1")
-    
-    # Ask user to stimulate cells
-    logger.info("Prompting user for cell stimulation...")
-    try:
-        prompt_to_continue(ADD_LIGAND_PROMPT)
-        logger.info("User chose to continue with cell stimulation.")
-    except PipelineQuit:
-        logger.info("User chose to quit during stimulation prompt.")
-        # Convert to QuitImageCapture to maintain existing error handling
-        raise QuitImageCapture
-    
-    # Second imaging loop, after cell stimulation
-    logger.info(f"Start imaging for well ID {well_obj.well_id}, round 2")
-    image_all_fov(well_obj, a1_manager, settings, f"{MEASURE_LABEL}_2")
-    
-    logger.info(f"Finished imaging for well ID {well_obj.well_id}")
+        fov_ids (list[str]): List of FOV ID strings (e.g., ["A1P0", "A1P1"]).
         
-def image_all_fov(well_obj: Well, a1_manager: A1Manager, settings: PipelineSettings, imaging_loop: str) -> None:
+    Returns:
+        list[FieldOfView]: List of FieldOfView objects matching the provided FOV IDs.
+        
+    Raises:
+        ValueError: If any FOV ID is not found in the well's positive FOVs.
     """
-    Take images of all the field of views in the well.
+    # Create a mapping from fov_id to FieldOfView object
+    fov_map = {fov.fov_id: fov for fov in well_obj.positive_fovs}
+    
+    # Convert FOV IDs to FieldOfView objects
+    result_fovs = []
+    for fov_id in fov_ids:
+        if fov_id not in fov_map:
+            raise ValueError(f"FOV ID '{fov_id}' not found in well's positive FOVs. Available FOVs: {list(fov_map.keys())}")
+        result_fovs.append(fov_map[fov_id])
+    
+    return result_fovs
+
+
+def image_fovs(well_obj: Well, a1_manager: A1Manager, settings: PipelineSettings, imaging_loop: str, fov_ids: list[str] | None = None) -> None:
+    """
+    Take images of specified field of views in the well.
     
     If `imaging_loop` contains 'measure', we:
       1. snap a measure image → bg removal
@@ -74,12 +62,16 @@ def image_all_fov(well_obj: Well, a1_manager: A1Manager, settings: PipelineSetti
         a1_manager (A1Manager): The A1Manager object to control the microscope.
         settings (PipelineSettings): The settings for the imaging pipeline.
         imaging_loop (str): The imaging loop label to use for the acquisition. Expected format is `"<category>_<instance>"`.
+        fov_ids (list[str] | None): Optional list of FOV ID strings to image (e.g., ["A1P0", "A1P1"]). If None, all positive FOVs will be imaged.
     """
+    # Determine which FOVs to process
+    fovs_to_process = _get_fovs_from_ids(well_obj, fov_ids) if fov_ids is not None else well_obj.positive_fovs
+    
     # Setup the imaging loop
     server_settings: ServerSettings = settings.server_settings
     server_settings.well_id = well_obj.well_id
     server_settings.dst_folder = str(well_obj.mask_dir)
-    server_settings.total_fovs = len(well_obj.positive_fovs)
+    server_settings.total_fovs = len(fovs_to_process)
     
     # Initialize the different steps functions
     snap = partial(_take_image_fov, a1_manager=a1_manager)
@@ -109,8 +101,8 @@ def image_all_fov(well_obj: Well, a1_manager: A1Manager, settings: PipelineSetti
         raise ValueError(f"Invalid imaging loop: {imaging_loop}. Expected 'measure' or 'control' in the loop name.")
     
     # Run the steps
-    total_fovs = len(well_obj.positive_fovs)
-    for fov in progress_bar(well_obj.positive_fovs,
+    total_fovs = len(fovs_to_process)
+    for fov in progress_bar(fovs_to_process,
                             desc=f"Imaging {imaging_loop}",
                             total=total_fovs):
         for loop_name, preset, post_fn in steps:
@@ -122,12 +114,6 @@ def image_all_fov(well_obj: Well, a1_manager: A1Manager, settings: PipelineSetti
     
     # Save the well object
     well_obj.to_json()
-
-class QuitImageCapture(Exception):
-    """
-    Raised when the user wants to quit the image capture process.
-    """
-    pass
 
 def _take_image_fov(fov_obj: FieldOfView, input_preset: PresetMeasure | PresetControl, imaging_loop: str, a1_manager: A1Manager) -> Path:
     """
