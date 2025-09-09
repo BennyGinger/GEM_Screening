@@ -1,5 +1,6 @@
 from pathlib import Path
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
+import json
 
 
 class LoggingSettings(BaseModel):
@@ -213,3 +214,27 @@ class PipelineSettings(BaseModel):
     server_settings: ServerSettings
     control_settings: ControlSettings
     stim_settings: StimSettings
+    
+    def to_json(self, file_path: Path) -> None:
+        """
+        Save the PipelineSettings object to a JSON file.
+        Args:
+            file_path (Path): Path where the JSON file will be saved.
+        """
+        from gem_screening.utils.serializers import CustomJSONEncoder
+        with open(file_path, 'w') as fp:
+            json.dump(self, fp, cls=CustomJSONEncoder, indent=2)
+    
+    @classmethod
+    def from_json(cls, file_path: Path) -> 'PipelineSettings':
+        """
+        Load a PipelineSettings object from a JSON file.
+        Args:
+            file_path (Path): Path to the JSON file.
+        Returns:
+            PipelineSettings: The loaded PipelineSettings object with all nested models properly reconstructed.
+        """
+        from gem_screening.utils.serializers import custom_json_decoder
+        with open(file_path, 'r') as f:
+            data = json.load(f, object_hook=custom_json_decoder)
+        return data

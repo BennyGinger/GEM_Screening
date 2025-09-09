@@ -1,6 +1,6 @@
 [project]
 name = "gem-screening"
-version = "0.1.0"
+version = "0.2.0"
 description = "Add your description here"
 readme = "README.md"
 authors = [
@@ -28,3 +28,8 @@ a1-manager = { path = "../A1_manager", editable = true }
 celltinder = { path = "../CellTinder", editable = true }
 progress-bar = { path = "../Progress_bar", editable = true }
 cp-server = { path = "../CP_server", editable = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.2",
+]

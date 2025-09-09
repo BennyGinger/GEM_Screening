@@ -1,6 +1,8 @@
 import logging
 from pathlib import Path
 
+import pandas as pd
+
 from a1_manager import A1Manager, StageCoord
 from cp_server.tasks_server.utils.redis_com import redis_client
 
@@ -49,7 +51,7 @@ def scan_round2(a1_manager: A1Manager, settings: PipelineSettings, well_obj: Wel
                 
     wait_for_completion(well_obj.well_id, timeout=settings.server_settings.server_timeout_sec)
 
-def select_cells(settings: PipelineSettings, well_obj: Well) -> None:
+def cell_selection(settings: PipelineSettings, well_obj: Well) -> None:
     """
     Select cells in the well object for further processing, using CellTinder.
     """
@@ -60,8 +62,9 @@ def select_cells(settings: PipelineSettings, well_obj: Well) -> None:
     extract_measure_intensities(well_obj.positive_fovs,
                                 true_cell_threshold=stim_sets.true_cell_threshold,
                                 csv_path=well_obj.csv_path,)
-
-    run_celltinder(well_obj.csv_path, crop_size=stim_sets.crop_size)
+    
+    if _is_csv_ready_for_processing(well_obj):
+        run_celltinder(well_obj.csv_path, crop_size=stim_sets.crop_size)
 
 def illuminate(a1_manager: A1Manager, settings: PipelineSettings, well_obj: Well) -> None:
     """
@@ -75,3 +78,23 @@ def illuminate(a1_manager: A1Manager, settings: PipelineSettings, well_obj: Well
 
     update_control_intensities(well_obj.positive_fovs, csv_path=well_obj.csv_path)
 
+def _is_csv_ready_for_processing(well_obj: Well) -> bool:
+    """ 
+    Check if the CSV file contains any cells marked for processing.
+    If the CSV file does not exist or cannot be read, return True to indicate that CellTinder should be run.
+    Args:
+        well_obj (Well): The Well object to check.
+    Returns:
+        bool: True if CellTinder should be run, False otherwise.
+    """
+    try:
+        df = pd.read_csv(well_obj.csv_path)
+        if 'process' in df.columns and df['process'].any():
+            logger.info(f"CSV exists with {df['process'].sum()} cells to process - skipping CellTinder")
+            return False  # CSV has already selected cells, skip CellTinder
+        else:
+            logger.info("CSV exists but no processed cells found - will run CellTinder")
+            return True  # CSV exists but no processed cells
+    except Exception as e:
+        logger.warning(f"Error reading CSV {well_obj.csv_path}: {e}. Will run CellTinder")
+        return True  # Error reading CSV, safer to run CellTinder

@@ -18,33 +18,6 @@ from gem_screening.well_data.well_classes import FieldOfView, Well
 logger = logging.getLogger(__name__)
 
 
-def _get_fovs_from_ids(well_obj: Well, fov_ids: list[str]) -> list[FieldOfView]:
-    """
-    Convert a list of FOV ID strings to FieldOfView objects from the well.
-    
-    Args:
-        well_obj (Well): The well object containing the field of views.
-        fov_ids (list[str]): List of FOV ID strings (e.g., ["A1P0", "A1P1"]).
-        
-    Returns:
-        list[FieldOfView]: List of FieldOfView objects matching the provided FOV IDs.
-        
-    Raises:
-        ValueError: If any FOV ID is not found in the well's positive FOVs.
-    """
-    # Create a mapping from fov_id to FieldOfView object
-    fov_map = {fov.fov_id: fov for fov in well_obj.positive_fovs}
-    
-    # Convert FOV IDs to FieldOfView objects
-    result_fovs = []
-    for fov_id in fov_ids:
-        if fov_id not in fov_map:
-            raise ValueError(f"FOV ID '{fov_id}' not found in well's positive FOVs. Available FOVs: {list(fov_map.keys())}")
-        result_fovs.append(fov_map[fov_id])
-    
-    return result_fovs
-
-
 def image_fovs(well_obj: Well, a1_manager: A1Manager, settings: PipelineSettings, imaging_loop: str, fov_ids: list[str] | None = None) -> None:
     """
     Take images of specified field of views in the well.
@@ -114,6 +87,32 @@ def image_fovs(well_obj: Well, a1_manager: A1Manager, settings: PipelineSettings
     
     # Save the well object
     well_obj.to_json()
+
+def _get_fovs_from_ids(well_obj: Well, fov_ids: list[str]) -> list[FieldOfView]:
+    """
+    Convert a list of FOV ID strings to FieldOfView objects from the well.
+    
+    Args:
+        well_obj (Well): The well object containing the field of views.
+        fov_ids (list[str]): List of FOV ID strings (e.g., ["A1P0", "A1P1"]).
+        
+    Returns:
+        list[FieldOfView]: List of FieldOfView objects matching the provided FOV IDs.
+        
+    Raises:
+        ValueError: If any FOV ID is not found in the well's positive FOVs.
+    """
+    # Create a mapping from fov_id to FieldOfView object
+    fov_map = {fov.fov_id: fov for fov in well_obj.positive_fovs}
+    
+    # Convert FOV IDs to FieldOfView objects
+    result_fovs: list[FieldOfView] = []
+    for fov_id in fov_ids:
+        if fov_id not in fov_map:
+            raise ValueError(f"FOV ID '{fov_id}' not found in well's positive FOVs. Available FOVs: {list(fov_map.keys())}")
+        result_fovs.append(fov_map[fov_id])
+    
+    return result_fovs
 
 def _take_image_fov(fov_obj: FieldOfView, input_preset: PresetMeasure | PresetControl, imaging_loop: str, a1_manager: A1Manager) -> Path:
     """

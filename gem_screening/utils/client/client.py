@@ -8,7 +8,7 @@ import os
 
 from progress_bar import get_corresponding_tqdm
 
-from gem_screening.utils.client.models import BackgroundPayload, ProcessPayload, RegisterMaskPayload, build_payload
+from gem_screening.utils.client.models import BackgroundPayload, ProcessPayload, RegisterMasksBatchPayload, build_payload
 from gem_screening.utils.identifiers import HOST_PREFIX
 from gem_screening.utils.settings.models import ServerSettings
 
@@ -181,56 +181,52 @@ def wait_for_completion(well_id: str,
     logger.info(f"Run {well_id} completed.")
 
 
-def register_mask_client(well_id: str, mask_path: Path, total_fovs: int, track_stitch_threshold: float = 0.75) -> str | None:
+def register_masks_batch_client(well_id: str, mask_paths: list[Path], total_fovs: int, track_stitch_threshold: float = 0.75) -> list[str]:
     """
-    Register a single mask to Redis and trigger tracking if it's an R2 mask.
+    Register multiple masks to Redis in batch and trigger tracking for R2 masks.
     
     Args:
         well_id (str): The well ID
-        mask_path (Path): Path to the mask file
+        mask_paths (list[Path]): List of paths to mask files
         total_fovs (int): Total number of FOVs (used for pending counter initialization)
         track_stitch_threshold (float): Threshold for stitching masks during tracking. Default is 0.75.
         
     Returns:
-        str | None: Task ID if tracking was triggered (R2 mask), None if only registration (R1 mask)
+        list[str]: List of tracking task IDs for R2 masks
     """
-    # Transform the Windows path to the container path
-    container_path = _transform_path_for_container(mask_path)
+    # Transform all paths to container paths
+    container_paths = [_transform_path_for_container(mask_path) for mask_path in mask_paths]
     
-    # Build the payload
-    payload = RegisterMaskPayload(
+    # Build the payload for batch registration using the dataclass
+    payload = RegisterMasksBatchPayload(
         well_id=well_id,
-        mask_path=container_path,
+        mask_paths=container_paths,
         total_fovs=total_fovs,
-        track_stitch_threshold=track_stitch_threshold
-    )
+        track_stitch_threshold=track_stitch_threshold)
     
     # Send to the register mask endpoint
-    return _send_to_register_mask(payload, mask_path.stem)
+    return _send_to_register_masks_batch(payload, len(mask_paths))
 
 
-def _send_to_register_mask(payload: RegisterMaskPayload, mask_stem: str) -> str | None:
+def _send_to_register_masks_batch(payload: RegisterMasksBatchPayload, total_masks: int) -> list[str]:
     """
-    Call the /register_mask endpoint to register a mask and optionally trigger tracking.
+    Call the /register_mask endpoint to register multiple masks in batch.
     
     Args:
-        payload (RegisterMaskPayload): The payload containing the mask registration parameters.
-        mask_stem (str): The mask filename stem for logging purposes.
+        payload (RegisterMasksBatchPayload): The payload containing the batch mask registration parameters.
+        total_masks (int): Total number of masks for logging purposes.
         
     Returns:
-        str | None: Task ID if tracking was triggered, None otherwise.
+        list[str]: List of tracking task IDs for R2 masks
     """
     url = f"{FASTAPI_URL}/register_mask"
-    resp = requests.post(url, json=asdict(payload), timeout=10)
+    resp = requests.post(url, json=asdict(payload), timeout=30)  # Longer timeout for batch
     resp.raise_for_status()
-    task_id = resp.json()  # Returns task ID string or None
+    tracking_task_ids = resp.json()  # Returns list of tracking task IDs
     
-    if task_id:
-        logger.info(f"Registered R2 mask and triggered tracking task {task_id} for {mask_stem}")
-    else:
-        logger.debug(f"Registered R1 mask for {mask_stem}, no tracking triggered")
+    logger.info(f"Registered {total_masks} masks in batch, {len(tracking_task_ids)} tracking tasks triggered")
     
-    return task_id
+    return tracking_task_ids
 
 
 if __name__ == "__main__":

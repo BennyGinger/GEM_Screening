@@ -30,6 +30,10 @@ def extract_measure_intensities(fovs: list[FieldOfView],
         executor (str, optional): Type of executor to use for parallel processing ('thread' or 'process'). Defaults to 'thread'.
         max_workers (int | None): Maximum number of workers to use for parallel processing. Defaults to None, which lets the executor decide based on available resources.
     """
+    if csv_path.exists():
+        logger.info(f"CSV file {csv_path} already exists. Skipping intensity extraction.")
+        return
+
     # Bind the threshold into a worker
     worker = lambda fov: _create_regionprops(fov, true_cell_threshold)
     

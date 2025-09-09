@@ -4,218 +4,142 @@ Functions to assess the current state of a pipeline run for rescue operations.
 from pathlib import Path
 from typing import Dict, Any
 
+from gem_screening.utils.pipeline_constants import REFSEG_LABEL
 from gem_screening.well_data.well_classes import Well
 
-
-def _count_expected_images(well_obj: Well) -> int:
-    """
-    Count the total number of images expected based on the well grid.
-    
-    Args:
-        well_obj: The Well object containing FOV information
-        
-    Returns:
-        Total number of expected images (number of FOVs)
-    """
-    return len(well_obj.positive_fovs)
-
-
-def _count_actual_images_in_directory(well_obj: Well) -> Dict[str, Any]:
-    """
-    Count the actual number of image files in the img directory.
-    Identifies missing FOVs and provides detailed analysis of what's missing.
-    
-    Args:
-        well_obj: The Well object containing directory information
-        
-    Returns:
-        Dictionary with detailed counts and missing FOV analysis
-    """
-    img_dir = well_obj.img_dir
-    
-    # Get all expected FOV IDs from the well object
-    expected_fov_ids = {fov.fov_id for fov in well_obj.positive_fovs}
-    
-    if not img_dir.exists():
-        return {
-            "total": 0,
-            "refseg_1": 0, "refseg_2": 0,
-            "measure_1": 0, "measure_2": 0,
-            "round_1_complete_pairs": 0,
-            "round_2_complete_pairs": 0,
-            "missing_round1": list(expected_fov_ids),
-            "missing_round2": [],
-            "complete_r1_r2_pairs": [],
-            "fov_ids": {
-                "refseg_1": set(), "refseg_2": set(),
-                "measure_1": set(), "measure_2": set()
-            }
-        }
-    
-    # Count files by type and round
-    refseg_1_files = list(img_dir.glob("*_refseg_1.tif"))
-    refseg_2_files = list(img_dir.glob("*_refseg_2.tif"))
-    measure_1_files = list(img_dir.glob("*_measure_1.tif"))
-    measure_2_files = list(img_dir.glob("*_measure_2.tif"))
-    
-    # Extract FOV IDs from filenames
-    def extract_fov_id(file_path: Path) -> str:
-        """Extract FOV ID from filename like 'A1P1_refseg_1.tif' -> 'A1P1'"""
-        return file_path.stem.split('_')[0]
-    
-    # Get sets of FOV IDs for each type
-    refseg_1_fovs = {extract_fov_id(f) for f in refseg_1_files}
-    refseg_2_fovs = {extract_fov_id(f) for f in refseg_2_files}
-    measure_1_fovs = {extract_fov_id(f) for f in measure_1_files}
-    measure_2_fovs = {extract_fov_id(f) for f in measure_2_files}
-    
-    # Find complete pairs for each round
-    round_1_complete_fovs = refseg_1_fovs.intersection(measure_1_fovs)
-    round_2_complete_fovs = refseg_2_fovs.intersection(measure_2_fovs)
-    
-    # Find missing FOVs for round 1 (expected but not complete pairs)
-    missing_round1 = list(expected_fov_ids - round_1_complete_fovs)
-    
-    # Missing round 2 logic depends on round 1 status
-    if len(round_1_complete_fovs) == len(expected_fov_ids):
-        # Round 1 is complete, check what's missing from round 2
-        missing_round2 = list(round_1_complete_fovs - round_2_complete_fovs)
-    else:
-        # Round 1 incomplete, missing_round2 not relevant
-        missing_round2 = []
-    
-    # Find FOVs that have complete pairs for BOTH rounds (2x2 complete)
-    complete_r1_r2_pairs = list(round_1_complete_fovs.intersection(round_2_complete_fovs))
-    
-    return {
-        "total": len(refseg_1_files) + len(refseg_2_files) + len(measure_1_files) + len(measure_2_files),
-        "refseg_1": len(refseg_1_files),
-        "refseg_2": len(refseg_2_files), 
-        "measure_1": len(measure_1_files),
-        "measure_2": len(measure_2_files),
-        "round_1_complete_pairs": len(round_1_complete_fovs),
-        "round_2_complete_pairs": len(round_2_complete_fovs),
-        "missing_round1": missing_round1,
-        "missing_round2": missing_round2,
-        "complete_r1_r2_pairs": complete_r1_r2_pairs,
-        "fov_ids": {
-            "refseg_1": refseg_1_fovs,
-            "refseg_2": refseg_2_fovs,
-            "measure_1": measure_1_fovs,
-            "measure_2": measure_2_fovs,
-            "round_1_complete": round_1_complete_fovs,
-            "round_2_complete": round_2_complete_fovs
-        }
-    }
-
-
-def _assess_image_scanning_state(well_obj: Well) -> Dict[str, Any]:
-    """
-    Assess the current state of image scanning for a well.
-    Simplified logic based on biological constraints.
-    
-    Args:
-        well_obj: The Well object to assess
-        
-    Returns:
-        Dictionary containing assessment information
-    """
-    expected_fovs = _count_expected_images(well_obj)
-    actual_images = _count_actual_images_in_directory(well_obj)
-    
-    # Check if stimulation has occurred (any round 2 files exist)
-    has_round_2_files = (actual_images["refseg_2"] > 0 or actual_images["measure_2"] > 0)
-    
-    assessment = {
-        "expected_fovs": expected_fovs,
-        "actual_images": actual_images,
-        "stimulation_occurred": has_round_2_files,
-        "round_1_complete": actual_images["round_1_complete_pairs"] == expected_fovs,
-        "round_2_complete": actual_images["round_2_complete_pairs"] == expected_fovs,
-        "status": "unknown"
-    }
-    
-    # Simplified status determination
-    if not has_round_2_files:
-        # No stimulation yet
-        if assessment["round_1_complete"]:
-            assessment["status"] = "ready_for_round2"
-        else:
-            assessment["status"] = "continue_round1"
-    else:
-        # Stimulation occurred
-        if assessment["round_1_complete"]:
-            if assessment["round_2_complete"]:
-                assessment["status"] = "complete"
-            else:
-                assessment["status"] = "continue_round2"
-        else:
-            assessment["status"] = "analyze_complete_pairs_only"
-    
-    return assessment
-
-
+# TODO: add case tracking
 def assess_rescue(well_obj: Well) -> Dict[str, Any]:
     """
-    Assess rescue feasibility with simplified logic.
+    Simplified rescue assessment with 3 main cases.
     
     Args:
         well_obj: The Well object to assess
         
     Returns:
-        Dictionary containing rescue action plan
+        Dictionary with:
+        - case: "round1", "round2", or "celltinder" 
+        - masks_to_register: list of mask file paths to register (both R1 and R2)
+        - fovs_to_process: list of FOV IDs that need processing
+        - total_fovs: total number of FOVs for processing (adjusted for edge cases)
     """
-    scanning_state = _assess_image_scanning_state(well_obj)
-    actual_images = scanning_state["actual_images"]
-    status = scanning_state["status"]
+    expected_fov_ids = {fov.fov_id for fov in well_obj.positive_fovs}
     
-    rescue_plan = {
-        "action": status,
-        "details": {},
-        "scanning_state": scanning_state
+    # Case 3: Check for CSV file (celltinder or illuminate case)
+    if well_obj.csv_path.exists():
+        return {
+            "case": "celltinder",
+            "masks_to_register": [],
+            "fovs_to_process": [],
+            "total_fovs": len(expected_fov_ids)
+        }
+    
+    # Define helper function first
+    def extract_fov_id(file_path: Path) -> str:
+        """Extract FOV ID from mask filename like 'A1P1_mask_1.tif' -> 'A1P1'"""
+        return file_path.stem.split(f'_{REFSEG_LABEL}_')[0]
+    
+    def get_tracked_masks(mask_dir: Path) -> set[Path]:
+        """Get set of already tracked mask paths from tracked_files.txt"""
+        track_log_file = mask_dir / "tracked_files.txt"
+        if not track_log_file.exists():
+            return set()
+        
+        # Read tracked files from log and convert to Path objects
+        with open(track_log_file, 'r') as f:
+            tracked_paths = {Path(line.strip()) for line in f if line.strip()}
+        
+        return tracked_paths
+    
+    # Check for R1 mask files first - this determines our starting point
+    r1_mask_files = list(well_obj.mask_dir.glob(f"*_{REFSEG_LABEL}_1.tif"))
+    r1_mask_fovs = {extract_fov_id(f) for f in r1_mask_files}
+    
+    # Find R2 mask files
+    r2_mask_files = list(well_obj.mask_dir.glob(f"*_{REFSEG_LABEL}_2.tif"))
+    
+    # Case 1: No R2 masks found - start from round1 (regardless of R1 status)
+    if not r2_mask_files:
+        # Get the FOV IDs for any existing R1 mask files
+        fovs_to_process = list(expected_fov_ids - r1_mask_fovs)
+        
+        return {
+            "case": "round1",
+            "masks_to_register": r1_mask_files,
+            "fovs_to_process": fovs_to_process,
+            "total_fovs": len(expected_fov_ids)
+        }
+    
+    # Case 2: R2 masks found - start from round2
+    # Now we know r2_mask_files is not empty, so create the set
+    r2_mask_fovs = {extract_fov_id(f) for f in r2_mask_files}
+    
+    # Get already tracked masks to subtract from registration lists
+    tracked_masks = get_tracked_masks(well_obj.mask_dir)
+    
+    # Check if R1 is complete
+    r1_complete = r1_mask_fovs.issuperset(expected_fov_ids)
+    
+    if r1_complete:
+        # R1 complete, check if R2 is also complete
+        r2_complete = r2_mask_fovs.issuperset(expected_fov_ids)
+        
+        # R1 complete, R2 complete or incomplete - subtract already tracked masks
+        untracked_r1_masks = [mask for mask in r1_mask_files if mask not in tracked_masks]
+        untracked_r2_masks = [mask for mask in r2_mask_files if mask not in tracked_masks]
+        
+        # Combine all untracked masks for registration
+        all_untracked_masks = untracked_r1_masks + untracked_r2_masks
+        
+        if r2_complete:
+            # R2 complete but tracking incomplete - no FOVs to image
+            fovs_to_process = []
+        else:
+            # R2 incomplete - continue imaging
+            fovs_to_process = list(expected_fov_ids - r2_mask_fovs)
+        
+        total_fovs = len(expected_fov_ids)
+    else:
+        # R1 incomplete, only process FOVs that have R1 masks
+        valid_fovs = r1_mask_fovs
+        fovs_to_process = list(valid_fovs - r2_mask_fovs)
+        # Edge case: total FOVs should be based on actual R1 masks, not expected
+        total_fovs = len(r1_mask_fovs)
+        
+        # Subtract already tracked masks for incomplete R1 case too
+        untracked_r1_masks = [mask for mask in r1_mask_files if mask not in tracked_masks]
+        untracked_r2_masks = [mask for mask in r2_mask_files if mask not in tracked_masks]
+        
+        # Combine all untracked masks for registration
+        all_untracked_masks = untracked_r1_masks + untracked_r2_masks
+    
+    # Final check: If no masks need registration, go to celltinder (regardless of missing FOVs)
+    if not all_untracked_masks:
+        return {
+            "case": "celltinder",
+            "masks_to_register": [],
+            "fovs_to_process": [],
+            "total_fovs": total_fovs
+        }
+    
+    return {
+        "case": "round2",
+        "masks_to_register": all_untracked_masks,
+        "fovs_to_process": fovs_to_process,
+        "total_fovs": total_fovs
     }
-    
-    if status == "ready_for_round2":
-        rescue_plan["details"] = {
-            "message": "Round 1 complete, proceed with stimulation and round 2",
-            "action": "Run normal round 2 workflow"
-        }
-        
-    elif status == "continue_round1":
-        missing_round1 = actual_images["missing_round1"]
-        rescue_plan["details"] = {
-            "message": f"Round 1 incomplete: {len(missing_round1)} FOVs need imaging",
-            "missing_fovs": missing_round1,
-            "action": "Image missing/mismatched FOVs for round 1 (may overwrite existing)"
-        }
-        
-    elif status == "continue_round2":
-        missing_round2 = actual_images["missing_round2"]
-        rescue_plan["details"] = {
-            "message": f"Round 2 incomplete: {len(missing_round2)} FOVs need imaging",
-            "missing_fovs": missing_round2,
-            "action": "Image missing/mismatched FOVs for round 2 (may overwrite existing)"
-        }
-        
-    elif status == "analyze_complete_pairs_only":
-        complete_2x2_pairs = actual_images["complete_r1_r2_pairs"]
-        rescue_plan["details"] = {
-            "message": f"Cannot rescue incomplete round 1 after stimulation",
-            "complete_pairs": len(complete_2x2_pairs),
-            "total_expected": scanning_state["expected_fovs"],
-            "fov_list": complete_2x2_pairs,
-            "action": "Analyze only the complete 2x2 paired FOVs, ignore missing ones"
-        }
-        
-    elif status == "complete":
-        rescue_plan["details"] = {
-            "message": "All imaging complete",
-            "action": "Proceed to analysis workflow"
-        }
-    
-    return rescue_plan
 
 
 if __name__ == "__main__":
-    # Example usage - would need actual well object
+    # Example usage showing the 3 simplified cases with tracking optimization:
+    # 
+    # Case 1 - Round 1: No r2 masks found
+    # {"case": "round1", "masks_to_register": [Path("A1P1_mask_1.tif"), Path("A1P2_mask_1.tif")], 
+    #  "fovs_to_process": ["A1P3", "A1P4"], "total_fovs": 4}
+    #
+    # Case 2 - Round 2: R2 masks found, only untracked masks registered (sorted automatically by server)
+    # {"case": "round2", "masks_to_register": [Path("A1P2_mask_1.tif"), Path("A1P1_mask_2.tif")],  # Mixed R1/R2, server sorts
+    #  "fovs_to_process": ["A1P3", "A1P4"], "total_fovs": 4}  # Only masks not in tracked_files.txt
+    #
+    # Case 3 - CellTinder: CSV file exists OR (R1+R2 complete AND all tracking complete)
+    # {"case": "celltinder", "masks_to_register": [], "fovs_to_process": [], "total_fovs": 4}
     pass
