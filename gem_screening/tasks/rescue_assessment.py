@@ -35,20 +35,21 @@ def assess_rescue(well_obj: Well) -> Dict[str, Any]:
     
     # Define helper function first
     def extract_fov_id(file_path: Path) -> str:
-        """Extract FOV ID from mask filename like 'A1P1_mask_1.tif' -> 'A1P1'"""
+        """Extract FOV ID from mask filename like 'A1P1_refseg_1.tif' -> 'A1P1'"""
         return file_path.stem.split(f'_{REFSEG_LABEL}_')[0]
     
-    def get_tracked_masks(mask_dir: Path) -> set[Path]:
-        """Get set of already tracked mask paths from tracked_files.txt"""
+    def get_tracked_masks(mask_dir: Path) -> set[str]:
+        """Get set of already tracked mask file names from tracked_files.txt.
+        We compare by file name only to avoid host/container path mismatches."""
         track_log_file = mask_dir / "tracked_files.txt"
         if not track_log_file.exists():
             return set()
         
-        # Read tracked files from log and convert to Path objects
+        # Read tracked files from log and compare by basename only
         with open(track_log_file, 'r') as f:
-            tracked_paths = {Path(line.strip()) for line in f if line.strip()}
+            tracked_names = {Path(line.strip()).name for line in f if line.strip()}
         
-        return tracked_paths
+        return tracked_names
     
     # Check for R1 mask files first - this determines our starting point
     r1_mask_files = list(well_obj.mask_dir.glob(f"*_{REFSEG_LABEL}_1.tif"))
@@ -74,7 +75,7 @@ def assess_rescue(well_obj: Well) -> Dict[str, Any]:
     r2_mask_fovs = {extract_fov_id(f) for f in r2_mask_files}
     
     # Get already tracked masks to subtract from registration lists
-    tracked_masks = get_tracked_masks(well_obj.mask_dir)
+    tracked_mask_names = get_tracked_masks(well_obj.mask_dir)
     
     # Check if R1 is complete
     r1_complete = r1_mask_fovs.issuperset(expected_fov_ids)
@@ -84,8 +85,8 @@ def assess_rescue(well_obj: Well) -> Dict[str, Any]:
         r2_complete = r2_mask_fovs.issuperset(expected_fov_ids)
         
         # R1 complete, R2 complete or incomplete - subtract already tracked masks
-        untracked_r1_masks = [mask for mask in r1_mask_files if mask not in tracked_masks]
-        untracked_r2_masks = [mask for mask in r2_mask_files if mask not in tracked_masks]
+        untracked_r1_masks = [mask for mask in r1_mask_files if mask.name not in tracked_mask_names]
+        untracked_r2_masks = [mask for mask in r2_mask_files if mask.name not in tracked_mask_names]
         
         # Combine all untracked masks for registration
         all_untracked_masks = untracked_r1_masks + untracked_r2_masks
@@ -105,12 +106,12 @@ def assess_rescue(well_obj: Well) -> Dict[str, Any]:
         # Edge case: total FOVs should be based on actual R1 masks, not expected
         total_fovs = len(r1_mask_fovs)
         
-        # Subtract already tracked masks for incomplete R1 case too
-        untracked_r1_masks = [mask for mask in r1_mask_files if mask not in tracked_masks]
-        untracked_r2_masks = [mask for mask in r2_mask_files if mask not in tracked_masks]
+    # Subtract already tracked masks for incomplete R1 case too
+    untracked_r1_masks = [mask for mask in r1_mask_files if mask.name not in tracked_mask_names]
+    untracked_r2_masks = [mask for mask in r2_mask_files if mask.name not in tracked_mask_names]
         
-        # Combine all untracked masks for registration
-        all_untracked_masks = untracked_r1_masks + untracked_r2_masks
+    # Combine all untracked masks for registration
+    all_untracked_masks = untracked_r1_masks + untracked_r2_masks
     
     # Final check: If no masks need registration, go to celltinder (regardless of missing FOVs)
     if not all_untracked_masks:

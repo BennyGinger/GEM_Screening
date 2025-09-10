@@ -60,9 +60,7 @@ def run_complete_flow(dish_grid: dict[str, dict[int, StageCoord]],
                 logger.info("User chose to quit the pipeline during imaging/stimulation.")
                 raise
             
-            cell_selection(settings, well_obj)
-
-            illuminate(a1_manager, settings, well_obj)
+            _after_scan(a1_manager, settings, well_obj)
             
             logger.info(f"Completed processing for well: {well}")
 
@@ -73,29 +71,34 @@ def run_rescue_flow(a1_manager: A1Manager,
     """
     Run the rescue pipeline workflow for the given list of well objects.
     """
-    for well_obj in well_objs:
-        # Determine the rescue plan for the well
-        rescue_plan = assess_rescue(well_obj)
-        logger.debug(f"Rescue plan for well {well_obj.well_id}: {rescue_plan}")
+    with ComposeManager():
+        # Clean up the redis server
+        cleanup_stale()
         
-        match rescue_plan["case"]:
-            case "round1":
-                # Register masks (R1 only in this case)
-                register_masks_batch_client(well_obj.well_id,
-                                            rescue_plan["masks_to_register"],
-                                            rescue_plan["total_fovs"])
-                # Start from round 1 imaging
-                _from_scan(True, a1_manager, settings, well_obj, rescue_plan["fovs_to_process"])
-            case "round2":
-                # Register all masks (R1 + R2, server will sort them)
-                register_masks_batch_client(well_obj.well_id,
-                                            rescue_plan["masks_to_register"],
-                                            rescue_plan["total_fovs"],
-                                            settings.server_settings.track_stitch_threshold)
-                # Start from round 2 imaging
-                _from_scan(False, a1_manager, settings, well_obj, rescue_plan["fovs_to_process"])
-            case "celltinder":
-                _after_scan(a1_manager, settings, well_obj)
+        # Loop through each well object and process the images
+        for well_obj in well_objs:
+            # Determine the rescue plan for the well
+            rescue_plan = assess_rescue(well_obj)
+            logger.debug(f"Rescue plan for well {well_obj.well_id}: {rescue_plan}")
+            
+            match rescue_plan["case"]:
+                case "round1":
+                    # Register masks (R1 only in this case)
+                    register_masks_batch_client(well_obj.well_id,
+                                                rescue_plan["masks_to_register"],
+                                                rescue_plan["total_fovs"])
+                    # Start from round 1 imaging
+                    _from_scan(True, a1_manager, settings, well_obj, rescue_plan["fovs_to_process"])
+                case "round2":
+                    # Register all masks (R1 + R2, server will sort them)
+                    register_masks_batch_client(well_obj.well_id,
+                                                rescue_plan["masks_to_register"],
+                                                rescue_plan["total_fovs"],
+                                                settings.server_settings.track_stitch_threshold)
+                    # Start from round 2 imaging
+                    _from_scan(False, a1_manager, settings, well_obj, rescue_plan["fovs_to_process"])
+                case "celltinder":
+                    _after_scan(a1_manager, settings, well_obj)
             
 
 def _from_scan(do_round1: bool, a1_manager: A1Manager, settings: PipelineSettings, well_obj: Well, fov_ids: list[str] | None = None) -> None:
@@ -117,8 +120,7 @@ def _from_scan(do_round1: bool, a1_manager: A1Manager, settings: PipelineSetting
     except PipelineQuit:
         logger.info("User chose to quit the pipeline during imaging/stimulation.")
         raise
-    cell_selection(settings, well_obj)
-    illuminate(a1_manager, settings, well_obj)
+    _after_scan(a1_manager, settings, well_obj)
     
     logger.info(f"Completed processing for well: {well_obj.well_id}")
         
@@ -141,99 +143,4 @@ def _after_scan(a1_manager: A1Manager, settings: PipelineSettings, well_obj: Wel
 
         
 
-
-  
-# def after_acquisition_rescue(a1_manager: A1Manager,
-#                 settings: PipelineSettings,
-#                 well_selection: str | list[str] | None = None,
-#                 ) -> None:
-#     """
-#     After acquisition rescue function to resend images to the server for processing.
-#     This function is used to recover from a failed acquisition or to reprocess specific wells. It collects all well objects from the saved directory, filters them based on the well selection, and resends the images to the server for processing.
-#     Args:
-#         a1_manager (A1Manager): The A1Manager instance to control the microscope hardware.
-#         settings (PipelineSettings): The settings for the pipeline, including acquisition settings, dish settings, and save directory.
-#         well_selection (str | list[str] | None): Optional selection of wells to process. If None, all wells will be processed.
-#     """
-#     # Retrieve saved well objects from the run directory
-#     well_objs = _retrieve_saved_wells(settings, well_selection)
         
-#     # Resend the images to the server    
-#     with ComposeManager():
-#         # Clean up the redis server
-#         cleanup_stale()
-        
-#         # Loop through each well object and process the images
-#         for well_obj in well_objs:
-#             fovs = well_obj.positive_fovs
-#             # Get the images to be processed by flattening the lists of Paths
-#             measure_paths = sorted([img for fov in fovs for img in fov.tiff_paths[MEASURE_LABEL]])
-            
-#             if settings.measure_settings.do_refseg:
-#                 refseg_paths = sorted([img for fov in fovs for img in fov.tiff_paths[REFSEG_LABEL]])
-                
-#                 # Send measure images for background removal
-#                 for img_path in measure_paths:
-#                     bg_removal_client(settings.server_settings, img_path)
-                
-#                 # Send refseg images for full processing
-#                 for img_path in refseg_paths:
-#                     full_process_client(settings.server_settings, img_path)
-#                 continue
-            
-#             # If no refseg is used, send measure images for full processing
-#             for img_path in measure_paths:
-#                 full_process_client(settings.server_settings, img_path)
-                
-#             # Wait for completion
-#             wait_for_completion(well_obj.run_id, timeout=settings.server_settings.server_timeout_sec)
-            
-#             _execute_well_analysis(a1_manager, settings, well_obj)
-
-# def _retrieve_saved_wells(settings: PipelineSettings, well_selection: str | list[str] | None = None) -> list[Well]:
-#     """
-#     Retrieve saved well objects from the run directory based on the provided settings and well selection.
-#     Args:
-#         settings (PipelineSettings): The settings for the pipeline, including acquisition settings, dish settings, and save directory.
-#         well_selection (str | list[str] | None): Optional selection of wells to process. If None, all wells will be processed.
-#     Returns:
-#         list[Well]: A list of Well objects that match the well selection criteria.
-#     """
-#     # Reconstruct run_dir
-#     run_dir = create_timestamped_dir(settings.savedir, settings.savedir_name)
-    
-#     # Collect all well object paths
-#     well_obj_paths = run_dir.rglob(f"*_{WELL_OBJ_FILENAME}")
-#     if well_selection is not None:
-#         if isinstance(well_selection, str):
-#             well_selection = [well_selection]
-#         well_obj_paths = [p for p in well_obj_paths if p.stem.split('_')[0] in well_selection]
-    
-#     # Rebuild the well objects from the saved files
-#     well_objs = [Well.from_json(p) for p in well_obj_paths]
-#     return well_objs
-
-# def after_celltinder_rescue(a1_manager: A1Manager,
-#                             settings: PipelineSettings,
-#                             well_selection: str | list[str] | None = None) -> None:
-    
-#     # Retrieve saved well objects from the run directory
-#     well_objs = _retrieve_saved_wells(settings, well_selection)
-
-#     # Resend the images to the server    
-#     with ComposeManager():
-#         # Clean up the redis server
-#         cleanup_stale()
-        
-#         # Loop through each well object and process the images
-#         for well_obj in well_objs:
-#             # create stim masks
-#             create_stim_masks(well_obj,
-#                                 erosion_factor=settings.stim_settings.erosion_factor)
-                    
-#             # Illumintate the cells
-#             illuminate_fovs(well_obj, a1_manager, settings)
-
-#             # Extract the control data
-#             update_control_intensities(well_obj.positive_fovs,
-#                                        csv_path=well_obj.csv_path)

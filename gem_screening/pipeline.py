@@ -48,28 +48,14 @@ def complete_pipeline(settings: PipelineSettings) -> None:
     
     logger.info("Pipeline completed successfully.")
 
-class PipelineStage(Enum):
+def rescue_pipeline(run_dir: Path, settings: PipelineSettings | None = None, well_selection: str | list[str] | None = None) -> None:
     """
-    Enumeration for the different stages of the pipeline.
-    Attributes:
-        
-        ROUND1 (str): To start from the first scanning round (before cell stimulation). Can be full or partial scanning.
-        
-        ROUND2 (str): To start from the second scanning round. It expects that the first round was completed.
-        Can be full, partial or 'empty' scanning, if only tracking is needed.
-        
-        CELLTINDER (str): To start the CellTinder stage. It expects that both scanning rounds were completed, including cell tracking.
-        
-        ILLUMINATION (str): To start the illumination stage. It expects that both scanning rounds were completed, including cell tracking and cell selection using CellTinder. Technically, this stage only requires the csv file amended by CellTinder (`process` and threshold columns).
+    Function to rescue a previously run pipeline from a specified run directory.
+    Args:
+        run_dir (Path): The directory where the previous run data is stored.
+        settings (PipelineSettings | None): The settings for the pipeline. If None, settings will be loaded from the run directory.
+        well_selection (str | list[str] | None): Specific wells to rescue. If None, all wells will be rescued.
     """
-    ROUND1 = "scan_round1"
-    ROUND2 = "scan_round2"
-    CELLTINDER = "celltinder"
-    ILLUMINATION = "illumination"
-
-
-def rescue_pipeline(run_dir: Path, settings: PipelineSettings | None = None, pipeline_stage: PipelineStage | None = None, well_selection: str | list[str] | None = None) -> None:
-    
     # Load the well_obj
     wells_lst = load_saved_well_obj(run_dir, well_selection)
 
@@ -83,7 +69,14 @@ def rescue_pipeline(run_dir: Path, settings: PipelineSettings | None = None, pip
     # Initialize rescue pipeline with existing run_dir and run_id
     a1_manager, logger = initialize_rescue_pipeline(settings, run_dir, run_id)
 
+    from gem_screening.tasks.workflows import run_rescue_flow
+    try:
+        run_rescue_flow(a1_manager, settings, wells_lst)
+    except PipelineQuit:
+        logger.info("User chose to quit during pipeline execution. Stopping pipeline.")
+        return
     
+    logger.info("Pipeline rescue completed successfully.")
         
  
 

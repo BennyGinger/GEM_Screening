@@ -1,7 +1,7 @@
 
 from pathlib import Path
 
-from gem_screening.tasks.initialization import CONFIG_FOLDER_NAME
+from gem_screening.tasks.initialization import CONFIG_FOLDER
 from gem_screening.utils.settings.models import PipelineSettings
 from gem_screening.well_data.well_classes import Well
 
@@ -43,7 +43,7 @@ def load_saved_settings(run_dir: Path) -> PipelineSettings:
     Returns:
         PipelineSettings: The loaded pipeline settings.
     """
-    settings_path = run_dir.joinpath(CONFIG_FOLDER_NAME, "pipeline_settings.json")
+    settings_path = run_dir.joinpath(CONFIG_FOLDER, "pipeline_settings.json")
     if not settings_path.exists():
         raise FileNotFoundError(f"No pipeline settings found at {settings_path}")
     return PipelineSettings.from_json(settings_path)

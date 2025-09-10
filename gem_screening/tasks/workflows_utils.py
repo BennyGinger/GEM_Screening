@@ -1,21 +1,16 @@
 import logging
-from pathlib import Path
 
 import pandas as pd
-
-from a1_manager import A1Manager, StageCoord
-from cp_server.tasks_server.utils.redis_com import redis_client
+from a1_manager import A1Manager
 
 from gem_screening.tasks.data_intensity import extract_measure_intensities, update_control_intensities
 from gem_screening.tasks.image_capture import image_fovs
-from gem_screening.utils.prompt_gui import PipelineQuit
 from gem_screening.utils.prompts import prompt_to_continue, ADD_LIGAND_PROMPT
 from gem_screening.tasks.light_stimulation import create_stim_masks, illuminate_fovs
 from gem_screening.tasks.mask_utils import assign_masks_to_fovs
-from gem_screening.utils.client.client import bg_removal_client, cleanup_stale, full_process_client, wait_for_completion
+from gem_screening.utils.client.client import wait_for_completion
 from gem_screening.utils.external import run_celltinder
-from gem_screening.utils.filesystem import create_timestamped_dir
-from gem_screening.utils.pipeline_constants import WELL_OBJ_FILENAME, MEASURE_LABEL, REFSEG_LABEL
+from gem_screening.utils.pipeline_constants import MEASURE_LABEL
 from gem_screening.utils.settings.models import PipelineSettings
 from gem_screening.well_data.well_classes import Well
 
