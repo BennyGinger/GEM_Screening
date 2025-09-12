@@ -125,6 +125,17 @@ def _create_regionprops(fov: FieldOfView, true_cell_threshold: int) -> pd.DataFr
     df[CELL_ID] = [f"{fov.fov_id}C{cell}" for cell in df[CELL_LABEL]]
     # Apply the ratio, avoiding division by zero
     df[RATIO] = df[AFTER_STIM] / df[BEFORE_STIM].replace(0, np.nan)
+
+    # Discard cells where ratio is NaN or Inf (e.g. BEFORE_STIM was 0) OR
+    # cells whose AFTER_STIM intensity was below the true_cell_threshold (set to 0 above).
+    invalid_ratio_mask = ~np.isfinite(df[RATIO])
+    below_threshold_mask = df[AFTER_STIM] == 0
+    to_drop_mask = invalid_ratio_mask | below_threshold_mask
+    dropped = int(to_drop_mask.sum())
+    if dropped:
+        logger.debug(
+            f"FOV {fov.fov_id}: Discarding {dropped} cells (invalid ratio or below threshold).")
+        df = df[~to_drop_mask].reset_index(drop=True)
     return df
 
 def _update_regionprops(fov: FieldOfView, df_ori: pd.DataFrame) -> pd.DataFrame:
