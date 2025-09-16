@@ -4,7 +4,7 @@ Functions to assess the current state of a pipeline run for rescue operations.
 from pathlib import Path
 from typing import Dict, Any
 
-from gem_screening.utils.pipeline_constants import REFSEG_LABEL
+from gem_screening.utils.pipeline_constants import MASK_LABEL
 from gem_screening.well_data.well_classes import Well
 
 
@@ -35,9 +35,9 @@ def assess_rescue(well_obj: Well) -> Dict[str, Any]:
     
     # Define helper function first
     def extract_fov_id(file_path: Path) -> str:
-        """Extract FOV ID from mask filename like 'A1P1_refseg_1.tif' -> 'A1P1'"""
-        return file_path.stem.split(f'_{REFSEG_LABEL}_')[0]
-    
+        """Extract FOV ID from mask filename like 'A1P1_mask_1.tif' -> 'A1P1'"""
+        return file_path.stem.split(f'_{MASK_LABEL}_')[0]
+
     def get_tracked_masks(mask_dir: Path) -> set[str]:
         """Get set of already tracked mask file names from tracked_files.txt.
         We compare by file name only to avoid host/container path mismatches."""
@@ -52,12 +52,12 @@ def assess_rescue(well_obj: Well) -> Dict[str, Any]:
         return tracked_names
     
     # Check for R1 mask files first - this determines our starting point
-    r1_mask_files = list(well_obj.mask_dir.glob(f"*_{REFSEG_LABEL}_1.tif"))
+    r1_mask_files = list(well_obj.mask_dir.glob(f"*_{MASK_LABEL}_1.tif"))
     r1_mask_fovs = {extract_fov_id(f) for f in r1_mask_files}
     
     # Find R2 mask files
-    r2_mask_files = list(well_obj.mask_dir.glob(f"*_{REFSEG_LABEL}_2.tif"))
-    
+    r2_mask_files = list(well_obj.mask_dir.glob(f"*_{MASK_LABEL}_2.tif"))
+
     # Case 1: No R2 masks found - start from round1 (regardless of R1 status)
     if not r2_mask_files:
         # Get the FOV IDs for any existing R1 mask files
