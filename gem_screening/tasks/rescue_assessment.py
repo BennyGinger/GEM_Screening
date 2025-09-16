@@ -7,7 +7,7 @@ from typing import Dict, Any
 from gem_screening.utils.pipeline_constants import REFSEG_LABEL
 from gem_screening.well_data.well_classes import Well
 
-# TODO: add case tracking
+
 def assess_rescue(well_obj: Well) -> Dict[str, Any]:
     """
     Simplified rescue assessment with 3 main cases.

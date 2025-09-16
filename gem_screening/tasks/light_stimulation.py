@@ -38,7 +38,7 @@ def create_stim_masks(well_obj: Well,
         executor (str, optional): Type of executor to use for parallel processing. Default is 'thread'.
         max_workers (int, optional): Maximum number of workers for parallel processing. Default is None, which uses the default number of workers.
     """
-    # FIXME: Change to parquet
+    
     data = pd.read_csv(well_obj.csv_path)
     logger.info(f"Loaded cell data from {well_obj.csv_path} with {len(data)} rows.")
     

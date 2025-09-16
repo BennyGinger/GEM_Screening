@@ -24,6 +24,7 @@ measure_sets = MeasureSettings(
                     preset_measure=PresetMeasure(
                                     optical_configuration='GFP',
                                     intensity=25),
+                    do_refseg=True,
                     preset_refseg=PresetRefseg(
                                     optical_configuration='iRed',
                                     intensity=5))

@@ -47,7 +47,7 @@ def extract_measure_intensities(fovs: list[FieldOfView],
     
     # Concatenate all the DataFrames
     df = pd.concat([df for df in region_dfs if isinstance(df, pd.DataFrame)], ignore_index=True)
-    # TODO: Change that to parquet
+    
     df.to_csv(csv_path, index=False)
     logger.info(f"Extracted region properties for {len(fovs)} FOVs and saved to {csv_path}.")
 
