@@ -23,11 +23,12 @@ def complete_pipeline(settings: PipelineSettings) -> None:
     a1_manager, run_dir, logger, run_id = initialize_pipeline(settings)
     
     # Prompt user to focus on cells
-    try: 
-        prompt_to_continue(FOCUS_PROMPT)
-    except PipelineQuit:
-        logger.info("User chose to quit during focus prompt. Stopping pipeline.")
-        return
+    if settings.dish_settings.dish_name.lower() != '35mm':
+        try: 
+            prompt_to_continue(FOCUS_PROMPT)
+        except PipelineQuit:
+            logger.info("User chose to quit during focus prompt. Stopping pipeline.")
+            return
     
     try:
         # Generate the dish_grid
