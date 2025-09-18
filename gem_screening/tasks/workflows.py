@@ -5,7 +5,8 @@ from a1_manager import A1Manager, StageCoord
 from cp_server import ComposeManager
 
 from gem_screening.tasks.workflows_utils import scan_round1, scan_round2, cell_selection, illuminate
-from gem_screening.utils.client.client import cleanup_stale, register_masks_batch_client
+from gem_screening.utils.client.cleanup import cleanup_stale
+from gem_screening.utils.client.mask_registration import register_masks_batch_client
 from gem_screening.tasks.rescue_assessment import assess_rescue
 from gem_screening.utils.prompt_gui import PipelineQuit
 from gem_screening.utils.settings.models import PipelineSettings

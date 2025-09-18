@@ -31,11 +31,11 @@ class BackgroundPayload():
     Payload Model for the `/process_bg_sub` endpoint.
     This model is used to send background subtraction parameters to the server.
     Attributes:
-        img_path (str): Path to the image file to be processed.
+        img_path (str | list[str]): Path(s) to the image file(s) to be processed.
         sigma (float): Sigma value for background subtraction.
         size (int): Size parameter for background subtraction.
     """
-    img_path: str
+    img_path: str | list[str]
     sigma: float = 0.0
     size: int = 7
 
@@ -47,7 +47,7 @@ class ProcessPayload(BackgroundPayload):
     It inherits from `BackgroundPayload` and adds additional parameters for segmentation and tracking.
     
     Attributes Inherited:
-        img_path (str): Path to the image file to be processed.
+        img_path (str | list[str]): Path(s) to the image file(s) to be processed.
         sigma (float): Sigma value for background subtraction.
         size (int): Size parameter for background subtraction.
     
@@ -83,7 +83,7 @@ class RegisterMasksBatchPayload:
     total_fovs: int
     track_stitch_threshold: float = 0.75
 
-def build_payload(img_path: str, 
+def build_payload(img_path: str | list[str], 
                    server_settings: ServerSettings,
                    *,
                    bg_only: bool = False,
@@ -98,14 +98,13 @@ def build_payload(img_path: str,
         (BackgroundPayload | ProcessPayload): The payload containing the image processing parameters.
     """
     # build the background settings payload
-    
     bg_sets = BG_SETS.copy()
     settings_dict = server_settings.model_dump()
     if bg_only:
         override = {k: v for k, v in settings_dict.items() if k in bg_sets}
         bg_sets.update(override)
         return BackgroundPayload(img_path=img_path, **bg_sets)
-    
+
     # Otherwise, build the full processing payload
     cp_sets = CP_SETS.copy()
     track_stitch_threshold = settings_dict.pop("track_stitch_threshold", 0.75)
@@ -129,12 +128,12 @@ def build_payload(img_path: str,
         total_fovs = int(total_fovs)  # type: ignore[assignment]
     except Exception as e:
         raise ValueError(f"total_fovs must be an integer, got {total_fovs!r}") from e
-    
+
     # Extract the different settings parameters
     for sets in (bg_sets, cp_sets):
         overrides = {k: v for k, v in settings_dict.items() if k in sets}
         sets.update(overrides)
-    
+
     # Build the payload
     return ProcessPayload(
         img_path=img_path,

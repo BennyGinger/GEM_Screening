@@ -8,7 +8,7 @@ from gem_screening.tasks.image_capture import image_fovs
 from gem_screening.utils.prompts import prompt_to_continue, ADD_LIGAND_PROMPT
 from gem_screening.tasks.light_stimulation import create_stim_masks, illuminate_fovs
 from gem_screening.tasks.mask_utils import assign_masks_to_fovs
-from gem_screening.utils.client.client import wait_for_completion
+from gem_screening.utils.client.progress import wait_for_completion
 from gem_screening.utils.external import run_celltinder
 from gem_screening.utils.pipeline_constants import MEASURE_LABEL
 from gem_screening.utils.settings.models import PipelineSettings

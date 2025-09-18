@@ -1,12 +1,13 @@
-from __future__ import annotations
 import logging
 from pathlib import Path
 from functools import partial
+from concurrent.futures import ThreadPoolExecutor
+from typing import Callable, Iterator
 
 from a1_manager import A1Manager
 from progress_bar import setup_progress_monitor as progress_bar
 
-from gem_screening.utils.client.client import bg_removal_client, full_process_client
+from gem_screening.utils.client.service import bg_removal_client, full_process_client
 from gem_screening.utils.filesystem import imwrite_atomic
 from gem_screening.utils.identifiers import parse_category_instance
 from gem_screening.utils.pipeline_constants import REFSEG_LABEL
@@ -17,6 +18,9 @@ from gem_screening.well_data.well_classes import FieldOfView, Well
 # Set up logging
 logger = logging.getLogger(__name__)
 
+# Batch size for async processing
+BATCH_SIZE = 16
+MAX_WORKER = 2
 
 def image_fovs(well_obj: Well, a1_manager: A1Manager, settings: PipelineSettings, imaging_loop: str, fov_ids: list[str] | None = None) -> None:
     """
@@ -46,13 +50,11 @@ def image_fovs(well_obj: Well, a1_manager: A1Manager, settings: PipelineSettings
     server_settings.dst_folder = str(well_obj.mask_dir)
     server_settings.total_fovs = len(fovs_to_process)
     
-    # Initialize the different steps functions
-    snap = partial(_take_image_fov, a1_manager=a1_manager)
+    # Initialize the different steps functions (preset and loop_name will be bound per step)
     bg_removal = partial(bg_removal_client, server_settings)
     full_process = partial(full_process_client, server_settings)
     
     # Determine the different steps of the imaging loop
-    
     steps = []
     if 'measure' in imaging_loop:
         measure_preset: PresetMeasure = settings.measure_settings.preset_measure
@@ -73,18 +75,14 @@ def image_fovs(well_obj: Well, a1_manager: A1Manager, settings: PipelineSettings
     else:
         raise ValueError(f"Invalid imaging loop: {imaging_loop}. Expected 'measure' or 'control' in the loop name.")
     
-    # Run the steps
+    # Run the steps with optimized batching
     total_fovs = len(fovs_to_process)
-    for fov in progress_bar(fovs_to_process,
-                            desc=f"Imaging {imaging_loop}",
-                            total=total_fovs):
-        for loop_name, preset, post_fn in steps:
-            # Take image of the fov
-            img_path = snap(fov, input_preset=preset, imaging_loop=loop_name)
-            
-            # Post-process the image
-            post_fn(img_path)
-    
+    for loop_name, preset, post_fn in steps:
+        snap = partial(_take_image_fov, input_preset=preset, imaging_loop=loop_name, a1_manager=a1_manager)
+        if total_fovs <= BATCH_SIZE:
+            _process_small_batch(fovs_to_process, snap, post_fn, total_fovs)
+        else:
+            _process_async_batches(fovs_to_process, snap, post_fn, total_fovs)
     # Save the well object
     well_obj.to_json()
 
@@ -143,3 +141,26 @@ def _take_image_fov(fov_obj: FieldOfView, input_preset: PresetMeasure | PresetCo
     # Build the payload for the image processing request
     return img_path
 
+def _yield_image_batches(fovs_to_process: list[FieldOfView], snap: Callable[[FieldOfView], Path], total_fovs: int, batch_size: int) -> Iterator[list[Path]]:
+    """Yield batches of image paths as they are acquired."""
+    img_batch: list[Path] = []
+    for fov in progress_bar(fovs_to_process,
+                            desc="Imaging",
+                            total=total_fovs):
+        img_path = snap(fov)
+        img_batch.append(img_path)
+        if len(img_batch) == batch_size:
+            yield img_batch
+            img_batch = []
+    if img_batch:
+        yield img_batch
+
+def _process_small_batch(fovs_to_process: list[FieldOfView], snap: Callable[[FieldOfView], Path], post_fn: Callable[[list[Path]], None], total_fovs: int) -> None:
+    # Only one batch, so just get the first yielded batch
+    for img_batch in _yield_image_batches(fovs_to_process, snap, total_fovs, batch_size=total_fovs):
+        post_fn(img_batch)
+
+def _process_async_batches(fovs_to_process: list[FieldOfView], snap: Callable[[FieldOfView], Path], post_fn: Callable[[list[Path]], None], total_fovs: int) -> None:
+    with ThreadPoolExecutor(max_workers=MAX_WORKER) as executor:
+        for img_batch in _yield_image_batches(fovs_to_process, snap, total_fovs, batch_size=BATCH_SIZE):
+            executor.submit(post_fn, img_batch.copy())
