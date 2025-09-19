@@ -9,7 +9,7 @@ from gem_screening.tasks.initialization import initialize_pipeline, initialize_r
 from gem_screening.tasks.rescue_utils import load_saved_well_obj, load_saved_settings
 from gem_screening.utils.prompts import prompt_to_continue, FOCUS_PROMPT
 from gem_screening.utils.prompt_gui import PipelineQuit
-from gem_screening.utils.settings.models import PipelineSettings
+from gem_screening.settings.models import PipelineSettings
 
 # TODO: Check that the edge case with no refseg mask will work fine
 def complete_pipeline(settings: PipelineSettings) -> None:
@@ -84,6 +84,6 @@ def rescue_pipeline(run_dir: Path, settings: PipelineSettings | None = None, wel
 
    
 if __name__ == '__main__':
-    from gem_screening.utils.settings.settings import full_settings
+    from gem_screening.settings.settings import full_settings
     
     complete_pipeline(full_settings)
