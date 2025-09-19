@@ -7,7 +7,6 @@ from gem_screening.settings.gui.pages.acquisition_page import AcquisitionPage
 from gem_screening.settings.gui.pages.dish_page import DishPage
 from gem_screening.settings.gui.pages.measure_page import MeasurePage
 from gem_screening.settings.gui.pages.server_page import ServerPage
-from gem_screening.settings.gui.pages.control_page import ControlPage
 from gem_screening.settings.gui.pages.stim_page import StimPage
 
 
@@ -20,7 +19,6 @@ def main():
         ("Dish", DishPage()),
         ("Measure", MeasurePage()),
         ("Server", ServerPage()),
-        ("Control", ControlPage()),
         ("Stim", StimPage()),
     ]
     window = MainWindow(pages)

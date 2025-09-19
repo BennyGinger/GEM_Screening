@@ -1,6 +1,6 @@
-from PyQt6.QtWidgets import QWidget, QFormLayout, QComboBox, QCheckBox,  QDoubleSpinBox, QLabel, QPushButton, QDialog, QVBoxLayout, QTableWidget, QSlider, QTableWidgetItem, QHeaderView, QHBoxLayout, QGroupBox, QLineEdit
+from PyQt6.QtWidgets import QWidget, QFormLayout, QComboBox, QCheckBox,  QDoubleSpinBox, QLabel, QPushButton, QDialog, QVBoxLayout, QTableWidget, QSlider, QTableWidgetItem, QHeaderView, QHBoxLayout, QGroupBox, QLineEdit, QSizePolicy
 from PyQt6.QtCore import Qt, QRect
-from PyQt6.QtGui import QColor, QIntValidator
+from PyQt6.QtGui import QColor, QIntValidator, QPainter, QPen, QMouseEvent
 
 class DishPage(QWidget):
     def __init__(self):
@@ -52,7 +52,9 @@ class DishPage(QWidget):
         self.overlap_percent = QSlider(Qt.Orientation.Horizontal)
         self.overlap_percent.setRange(0, 100)
         self.overlap_percent.setValue(0)
-        self.overlap_percent.setMinimumWidth(200)
+        self.overlap_percent.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.overlap_percent.setMinimumWidth(500)
+        # Match slider width to measure page (no explicit minimum width)
         overlap_label = QLabel("Overlap %")
         overlap_label.setToolTip("Overlap percentage for field views. If None, will use optimal overlap for the dish.")
         self.overlap_value_label = QLabel(str(self.overlap_percent.value()))
@@ -175,10 +177,10 @@ class DishPage(QWidget):
             self.update_well_selection_btn()
 
 # --- WellSelectionDialog ---
-from PyQt6.QtWidgets import QTableWidget as OrigQTableWidget
+
 
 # Custom QTableWidget to draw rubber-band rectangle in foreground
-class RubberBandTableWidget(OrigQTableWidget):
+class RubberBandTableWidget(QTableWidget):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._drag_active = False
@@ -191,64 +193,76 @@ class RubberBandTableWidget(OrigQTableWidget):
         self._drag_mode = mode
         self._drag_start = start
         self._drag_end = end
-        self.viewport().update()
+        viewport = self.viewport()
+        if viewport is not None:
+            viewport.update()
 
     def clear_rubberband(self):
         self._drag_active = False
         self._drag_mode = None
         self._drag_start = None
         self._drag_end = None
-        self.viewport().update()
+        viewport = self.viewport()
+        if viewport is not None:
+            viewport.update()
 
-    def paintEvent(self, event):
-        super().paintEvent(event)
+    def paintEvent(self, e):
+        super().paintEvent(e)
         # Draw the rubber-band rectangle in the foreground
         if self._drag_active and self._drag_start and self._drag_end:
-            from PyQt6.QtGui import QPainter, QColor, QPen
+            
             painter = QPainter(self.viewport())
             if self._drag_mode == 'deselect':
                 pen = QPen(QColor(220, 50, 50, 180), 2, Qt.PenStyle.DashLine)  # Red-ish
             else:
                 pen = QPen(QColor(0, 120, 215, 180), 2, Qt.PenStyle.DashLine)  # Blue-ish
             painter.setPen(pen)
-            from PyQt6.QtCore import QRect
             rect = QRect(self._drag_start, self._drag_end).normalized()
             painter.drawRect(rect)
             painter.end()
 
 class WellSelectionDialog(QDialog):
-    def eventFilter(self, obj, event):
+    def eventFilter(self, a0, a1):
         # Rubber-band rectangle selection logic (mouse events only)
-        from PyQt6.QtCore import QPoint
-        if obj == self.table.viewport():
-            if event.type() == event.Type.MouseButtonPress:
-                pos = event.position().toPoint() if hasattr(event, 'position') else event.pos()
+        if a0 == self.table.viewport() and a1 is not None:
+            if a1.type() == a1.Type.MouseButtonPress:
+                if isinstance(a1, QMouseEvent):
+                    pos = a1.pos()
+                else:
+                    pos = None
                 self._drag_start = pos
                 self._drag_end = pos
                 self._drag_active = True
-                if event.button() == Qt.MouseButton.LeftButton:
-                    self._drag_mode = 'select'
-                elif event.button() == Qt.MouseButton.RightButton:
-                    self._drag_mode = 'deselect'
+                
+                if isinstance(a1, QMouseEvent):
+                    if a1.button() == Qt.MouseButton.LeftButton:
+                        self._drag_mode = 'select'
+                    elif a1.button() == Qt.MouseButton.RightButton:
+                        self._drag_mode = 'deselect'
+                    else:
+                        self._drag_mode = None
                 else:
                     self._drag_mode = None
                 self.table.set_rubberband(True, self._drag_mode, self._drag_start, self._drag_end)
                 self._highlight_cells_in_rect(self._drag_start, self._drag_end)
                 return True
-            elif event.type() == event.Type.MouseMove and getattr(self, '_drag_active', False):
-                pos = event.position().toPoint() if hasattr(event, 'position') else event.pos()
+            elif a1.type() == a1.Type.MouseMove and getattr(self, '_drag_active', False):
+                if isinstance(a1, QMouseEvent):
+                    pos = a1.pos()
+                else:
+                    pos = None
                 self._drag_end = pos
                 self.table.set_rubberband(True, self._drag_mode, self._drag_start, self._drag_end)
                 self._highlight_cells_in_rect(self._drag_start, self._drag_end)
                 return True
-            elif event.type() == event.Type.MouseButtonRelease and getattr(self, '_drag_active', False):
+            elif a1.type() == a1.Type.MouseButtonRelease and getattr(self, '_drag_active', False):
                 self._apply_drag_selection()
                 self._clear_highlight()
                 self._drag_active = False
                 self._drag_mode = None
                 self.table.clear_rubberband()
                 return True
-        return super().eventFilter(obj, event)
+        return super().eventFilter(a0, a1)
 
     def _highlight_cells_in_rect(self, start, end):
         # Highlight all cells within the rectangle defined by start and end
@@ -256,30 +270,34 @@ class WellSelectionDialog(QDialog):
         for r in range(self.rows):
             for c in range(self.cols):
                 item = self.table.item(r, c)
-                cell_rect = self.table.visualItemRect(item)
-                if rect.intersects(cell_rect):
-                    item.setBackground(QColor(200, 220, 255, 180))
-                else:
-                    item.setBackground(QColor(255, 255, 255, 0))
+                if item is not None:
+                    cell_rect = self.table.visualItemRect(item)
+                    if rect.intersects(cell_rect):
+                        item.setBackground(QColor(200, 220, 255, 180))
+                    else:
+                        item.setBackground(QColor(255, 255, 255, 0))
 
     def _clear_highlight(self):
         for r in range(self.rows):
             for c in range(self.cols):
                 item = self.table.item(r, c)
-                item.setBackground(QColor(255, 255, 255, 0))
+                if item is not None:
+                    item.setBackground(QColor(255, 255, 255, 0))
 
     def _apply_drag_selection(self):
         # Actually select/deselect all highlighted cells
-        rect = QRect(self._drag_start, self._drag_end).normalized()
-        for r in range(self.rows):
-            for c in range(self.cols):
-                item = self.table.item(r, c)
-                cell_rect = self.table.visualItemRect(item)
-                if rect.intersects(cell_rect):
-                    if self._drag_mode == 'select':
-                        item.setSelected(True)
-                    elif self._drag_mode == 'deselect':
-                        item.setSelected(False)
+        if self._drag_start is not None and self._drag_end is not None:
+            rect = QRect(self._drag_start, self._drag_end).normalized()
+            for r in range(self.rows):
+                for c in range(self.cols):
+                    item = self.table.item(r, c)
+                    if item is not None:
+                        cell_rect = self.table.visualItemRect(item)
+                        if rect.intersects(cell_rect):
+                            if self._drag_mode == 'select':
+                                item.setSelected(True)
+                            elif self._drag_mode == 'deselect':
+                                item.setSelected(False)
 
     def __init__(self, parent, rows, cols, row_labels, col_labels, selected_wells):
         super().__init__(parent)
@@ -300,8 +318,12 @@ class WellSelectionDialog(QDialog):
         if rows == 8 and cols == 12:
             cell_width = 40
             cell_height = 32
-            table_width = cell_width * cols + self.table.verticalHeader().width() + 4
-            table_height = cell_height * rows + self.table.horizontalHeader().height() + 4
+            vh = self.table.verticalHeader()
+            hh = self.table.horizontalHeader()
+            vh_width = vh.width() if vh is not None else 0
+            hh_height = hh.height() if hh is not None else 0
+            table_width = cell_width * cols + vh_width + 4
+            table_height = cell_height * rows + hh_height + 4
             self.table.setMinimumSize(table_width, table_height)
             self.setMinimumSize(table_width + 40, table_height + 100)
             for c in range(cols):
@@ -309,8 +331,12 @@ class WellSelectionDialog(QDialog):
             for r in range(rows):
                 self.table.setRowHeight(r, cell_height)
         else:
-            self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-            self.table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+            hh = self.table.horizontalHeader()
+            vh = self.table.verticalHeader()
+            if hh is not None:
+                hh.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+            if vh is not None:
+                vh.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.setSelectionMode(QTableWidget.SelectionMode.MultiSelection)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectItems)
         for r in range(rows):
@@ -320,13 +346,17 @@ class WellSelectionDialog(QDialog):
                 item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
                 self.table.setItem(r, c, item)
                 if well in self.selected:
-                    self.table.item(r, c).setSelected(True)
+                    item = self.table.item(r, c)
+                    if item is not None:
+                        item.setSelected(True)
 
         vbox.addWidget(self.table)
 
         # Install event filter for left/right click and drag selection (must be after self.table is created)
-        self.table.viewport().installEventFilter(self)
-        self.table.viewport().setMouseTracking(True)
+        viewport = self.table.viewport()
+        if viewport is not None:
+            viewport.installEventFilter(self)
+            viewport.setMouseTracking(True)
         self._drag_active = False
         self._drag_mode = None
 

@@ -1,6 +1,5 @@
 
 from PyQt6.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QListWidget, QStackedWidget, QCheckBox
-from PyQt6.QtCore import Qt
 
 class MainWindow(QMainWindow):
     def __init__(self, pages):
