@@ -1,4 +1,4 @@
-from gem_screening.utils.prompt_gui import prompt_gui_with_fallback, PipelineQuit
+from gem_screening.utils.prompt_gui import prompt_gui_with_fallback
 
 
 def prompt_to_continue(prompt: str) -> bool:

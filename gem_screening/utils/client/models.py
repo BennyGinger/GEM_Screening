@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Any
 
 from gem_screening.utils.pipeline_constants import BG_SETS, CP_SETS
-from gem_screening.utils.settings.models import ServerSettings
+from gem_screening.settings.models import ServerSettings
 
 def _transform_path_for_container(img_path: Path) -> str:
     """Transform a Windows path to the corresponding Docker container path."""

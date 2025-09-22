@@ -64,51 +64,51 @@ def custom_json_decoder(dct: dict[str, Any]) -> Any:
 
             # 4) Pydantic Settings Models
             if type_name == "PipelineSettings":
-                from gem_screening.utils.settings.models import PipelineSettings
+                from gem_screening.settings.models import PipelineSettings
                 return PipelineSettings(**data)
             
             if type_name == "LoggingSettings":
-                from gem_screening.utils.settings.models import LoggingSettings
+                from gem_screening.settings.models import LoggingSettings
                 return LoggingSettings(**data)
             
             if type_name == "AcquisitionSettings":
-                from gem_screening.utils.settings.models import AcquisitionSettings
+                from gem_screening.settings.models import AcquisitionSettings
                 return AcquisitionSettings(**data)
             
             if type_name == "DishSettings":
-                from gem_screening.utils.settings.models import DishSettings
+                from gem_screening.settings.models import DishSettings
                 return DishSettings(**data)
             
             if type_name == "PresetMeasure":
-                from gem_screening.utils.settings.models import PresetMeasure
+                from gem_screening.settings.models import PresetMeasure
                 return PresetMeasure(**data)
             
             if type_name == "PresetRefseg":
-                from gem_screening.utils.settings.models import PresetRefseg
+                from gem_screening.settings.models import PresetRefseg
                 return PresetRefseg(**data)
             
             if type_name == "PresetControl":
-                from gem_screening.utils.settings.models import PresetControl
+                from gem_screening.settings.models import PresetControl
                 return PresetControl(**data)
             
             if type_name == "PresetStim":
-                from gem_screening.utils.settings.models import PresetStim
+                from gem_screening.settings.models import PresetStim
                 return PresetStim(**data)
             
             if type_name == "MeasureSettings":
-                from gem_screening.utils.settings.models import MeasureSettings
+                from gem_screening.settings.models import MeasureSettings
                 return MeasureSettings(**data)
             
             if type_name == "ControlSettings":
-                from gem_screening.utils.settings.models import ControlSettings
+                from gem_screening.settings.models import ControlSettings
                 return ControlSettings(**data)
             
             if type_name == "StimSettings":
-                from gem_screening.utils.settings.models import StimSettings
+                from gem_screening.settings.models import StimSettings
                 return StimSettings(**data)
             
             if type_name == "ServerSettings":
-                from gem_screening.utils.settings.models import ServerSettings
+                from gem_screening.settings.models import ServerSettings
                 return ServerSettings(**data)
 
             # 5) Path  

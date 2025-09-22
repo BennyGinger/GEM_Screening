@@ -11,7 +11,7 @@ from gem_screening.tasks.mask_utils import assign_masks_to_fovs
 from gem_screening.utils.client.progress import wait_for_completion
 from gem_screening.utils.external import run_celltinder
 from gem_screening.utils.pipeline_constants import MEASURE_LABEL
-from gem_screening.utils.settings.models import PipelineSettings
+from gem_screening.settings.models import PipelineSettings
 from gem_screening.well_data.well_classes import Well
 
 

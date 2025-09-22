@@ -7,7 +7,7 @@ from gem_screening.utils.client import FASTAPI_URL
 from gem_screening.utils.client.models import BackgroundPayload, ProcessPayload, build_payload
 from gem_screening.utils.filesystem import transform_path_for_container
 from gem_screening.utils.network import make_request_with_retry
-from gem_screening.utils.settings.models import ServerSettings
+from gem_screening.settings.models import ServerSettings
 
 
 logger = logging.getLogger(__name__)

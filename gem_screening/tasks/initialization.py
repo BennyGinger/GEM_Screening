@@ -9,7 +9,7 @@ from gem_screening.logger import get_logger, configure_logging
 from gem_screening.utils.filesystem import create_timestamped_dir
 from gem_screening.utils.identifiers import make_run_id
 from gem_screening.utils.pipeline_constants import CONFIG_FOLDER
-from gem_screening.utils.settings.models import PipelineSettings
+from gem_screening.settings.models import PipelineSettings
 
 
 

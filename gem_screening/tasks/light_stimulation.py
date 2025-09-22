@@ -14,7 +14,7 @@ from progress_bar import setup_progress_monitor as progress_bar
 from gem_screening.utils.pipeline_constants import PROCESS, FOV_ID, MASK_LABEL, STIM_LABEL, CONTROL_LABEL
 from gem_screening.tasks.image_capture import image_fovs
 from gem_screening.utils.filesystem import imwrite_atomic
-from gem_screening.utils.settings.models import PipelineSettings, PresetStim
+from gem_screening.settings.models import PipelineSettings, PresetStim
 from gem_screening.well_data.well_classes import FieldOfView, Well
 
 
@@ -152,10 +152,10 @@ def _erode_mask(mask: NDArray[T], erosion_factor: int) -> NDArray[T]:
     Returns:
         Eroded mask as a 2D integer array.
     """
-    pat_ero = morph.disk(erosion_factor)
+    pat_ero = np.array(morph.disk(erosion_factor)).astype(np.uint8)
     # Convert mask to uint8 for cv2.erode, then convert back to original dtype
     mask_uint8 = mask.astype(np.uint8)
-    eroded_uint8 = cv2.erode(mask_uint8, pat_ero.astype(np.uint8))
+    eroded_uint8 = cv2.erode(mask_uint8, pat_ero)
     return eroded_uint8.astype(mask.dtype)  # type: ignore[return-value]
 
 def _filter_labels(mask: NDArray[T], process: list[bool]) -> NDArray[T]:

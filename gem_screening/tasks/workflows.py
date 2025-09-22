@@ -9,7 +9,7 @@ from gem_screening.utils.client.cleanup import cleanup_stale
 from gem_screening.utils.client.mask_registration import register_masks_batch_client
 from gem_screening.tasks.rescue_assessment import assess_rescue
 from gem_screening.utils.prompt_gui import PipelineQuit
-from gem_screening.utils.settings.models import PipelineSettings
+from gem_screening.settings.models import PipelineSettings
 from gem_screening.well_data.well_classes import Well
 
 

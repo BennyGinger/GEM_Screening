@@ -11,7 +11,7 @@ from gem_screening.utils.client.service import bg_removal_client, full_process_c
 from gem_screening.utils.filesystem import imwrite_atomic
 from gem_screening.utils.identifiers import parse_category_instance
 from gem_screening.utils.pipeline_constants import REFSEG_LABEL
-from gem_screening.utils.settings.models import PipelineSettings, PresetMeasure, PresetControl, ServerSettings
+from gem_screening.settings.models import PipelineSettings, PresetMeasure, PresetControl, ServerSettings
 from gem_screening.well_data.well_classes import FieldOfView, Well
 
 

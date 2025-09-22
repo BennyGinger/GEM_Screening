@@ -2,7 +2,7 @@
 from pathlib import Path
 
 from gem_screening.tasks.initialization import CONFIG_FOLDER
-from gem_screening.utils.settings.models import PipelineSettings
+from gem_screening.settings.models import PipelineSettings
 from gem_screening.well_data.well_classes import Well
 
 

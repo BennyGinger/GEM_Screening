@@ -11,7 +11,7 @@ from gem_screening.utils.prompts import prompt_to_continue, FOCUS_PROMPT
 from gem_screening.utils.prompt_gui import PipelineQuit
 from gem_screening.settings.models import PipelineSettings
 
-# TODO: Check that the edge case with no refseg mask will work fine
+
 def complete_pipeline(settings: PipelineSettings) -> None:
     """
     Main function to run the complete pipeline for cell imaging and stimulation.
