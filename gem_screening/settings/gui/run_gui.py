@@ -15,11 +15,11 @@ def main():
     # Logging is considered advanced, so it should be first in the list for easier logic
     pages = [
         ("Logging", LoggingPage()),
-        ("Acquisition", AcquisitionPage()),
+        ("Microscope", AcquisitionPage()),
         ("Dish", DishPage()),
-        ("Measure", MeasurePage()),
+        ("Optics", MeasurePage()),
         ("Server", ServerPage()),
-        ("Stim", StimPage()),
+        ("Light-Stimulation", StimPage()),
     ]
     window = MainWindow(pages)
     window.show()

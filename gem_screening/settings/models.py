@@ -155,7 +155,7 @@ class ServerSettings(BaseModel):
         gpu (bool, optional): If True, will use GPU for processing. Defaults to True.
         channels (list[int], optional): List of channels to use for segmentation. Defaults to None. Deprecated in cellpose>=4.0, parameter will be ignored.
         diameter (int, optional): Diameter for segmentation, e.g., 40 or 60. Defaults to 40. Deprecated in cellpose>=4.0, parameter will be ignored.
-        flow_threshold (float, optional): Flow threshold for segmentation. Defaults to 1.
+        flow_threshold (float, optional): Flow threshold for segmentation. Defaults to 0.4.
         cellprob_threshold (float, optional): Cell probability threshold for segmentation. Defaults to 0.
         z_axis (int, optional): Z-axis index for 3D segmentation. Defaults to None.
         do_3D (bool, optional): If True, will perform 3D segmentation. Defaults to False.
@@ -177,7 +177,7 @@ class ServerSettings(BaseModel):
     gpu: bool = True
     channels: list[int] | None = None
     diameter: int = 40
-    flow_threshold: float = 1.0
+    flow_threshold: float = 0.4
     cellprob_threshold: float = 0.0
     z_axis: int | None = None
     do_3D: bool = False
