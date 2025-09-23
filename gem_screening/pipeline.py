@@ -1,6 +1,5 @@
 from __future__ import annotations
 from pathlib import Path
-from enum import Enum
 
 from a1_manager import launch_dish_workflow
 from a1_manager.autofocus.af_utils import QuitAutofocus
