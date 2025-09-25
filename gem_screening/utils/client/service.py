@@ -13,7 +13,7 @@ from gem_screening.settings.models import ServerSettings
 logger = logging.getLogger(__name__)
 
 
-def bg_removal_client(server_settings: ServerSettings, img_path: Path) -> None:
+def bg_removal_client(server_settings: ServerSettings, img_path: Path | list[Path]) -> None:
     """
     Send a background subtraction task (single or batch) to the server. Payload is built using the provided image path(s) and server settings.
     Args:
@@ -21,12 +21,12 @@ def bg_removal_client(server_settings: ServerSettings, img_path: Path) -> None:
         img_path (Path | list[Path]): The path(s) to the image file(s) to be processed.
     """
     # Accept both single Path or list[Path]
-    if isinstance(img_path, (str, Path)):
-        img_paths = [img_path]
-    else:
-        img_paths = img_path
+    if isinstance(img_path, Path):
+        img_path = [img_path]
+    
     # Transform all paths
-    container_paths = [transform_path_for_container(Path(p)) for p in img_paths]
+    container_paths = [transform_path_for_container(p) for p in img_path]
+    
     # If only one, send as str for backward compatibility
     payload_img_path = container_paths[0] if len(container_paths) == 1 else container_paths
     bg_payload = build_payload(img_path=payload_img_path,
@@ -34,7 +34,7 @@ def bg_removal_client(server_settings: ServerSettings, img_path: Path) -> None:
                               bg_only=True)
     _send_to_process_bg_sub(bg_payload)
 
-def full_process_client(server_settings: ServerSettings, img_path: Path) -> None:
+def full_process_client(server_settings: ServerSettings, img_path: Path | list[Path]) -> None:
     """
     Send a full processing task (single or batch) to the server. Payload is built using the provided image path(s) and server settings.
     Args:
@@ -42,12 +42,12 @@ def full_process_client(server_settings: ServerSettings, img_path: Path) -> None
         img_path (Path | list[Path]): The path(s) to the image file(s) to be processed.
     """
     # Accept both single Path or list[Path]
-    if isinstance(img_path, (str, Path)):
-        img_paths = [img_path]
-    else:
-        img_paths = img_path
+    if isinstance(img_path, Path):
+        img_path = [img_path]
+        
     # Transform all paths
-    container_paths = [transform_path_for_container(Path(p)) for p in img_paths]
+    container_paths = [transform_path_for_container(p) for p in img_path]
+    
     # If only one, send as str for backward compatibility
     payload_img_path = container_paths[0] if len(container_paths) == 1 else container_paths
     full_payload = build_payload(img_path=payload_img_path,

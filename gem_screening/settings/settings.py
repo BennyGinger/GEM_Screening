@@ -15,9 +15,9 @@ dish_sets = DishSettings(
                     dish_name='35mm',
                     well_selection=['A1'],
                     af_method='sq_grad',
-                    overwrite_autofocus=True,
+                    overwrite_autofocus=False,
                     overwrite_calib=False,
-                    numb_field_view=3,)
+                    numb_field_view=200,)
 
 # Preset settings for imaging for measurement
 measure_sets = MeasureSettings(
