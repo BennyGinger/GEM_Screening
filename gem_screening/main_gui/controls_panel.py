@@ -2,8 +2,9 @@ from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit
 from PyQt6.QtCore import QDateTime, Qt
 
 class ControlsPanel(QWidget):
-    def __init__(self):
+    def __init__(self, pipeline_settings=None):
         super().__init__()
+        self.pipeline_settings = pipeline_settings
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
@@ -12,6 +13,7 @@ class ControlsPanel(QWidget):
         path_label = QLabel("Experiment folder:")
         self.path_edit = QLineEdit()
         self.path_edit.setPlaceholderText("Paste or write folder path...")
+        self.path_edit.textChanged.connect(self.update_savedir)
         browse_btn = QPushButton("Browse")
         browse_btn.clicked.connect(self.browse_folder)
         path_layout.addWidget(path_label)
@@ -25,6 +27,7 @@ class ControlsPanel(QWidget):
         self.timestamp_label = QLabel(timestamp)
         self.suffix_edit = QLineEdit()
         self.suffix_edit.setPlaceholderText("Optional suffix (e.g. test_run)")
+        self.suffix_edit.textChanged.connect(self.update_savedir_name)
         ts_layout.addWidget(QLabel("Folder name:"))
         ts_layout.addWidget(self.timestamp_label)
         ts_layout.addWidget(self.suffix_edit)
@@ -43,6 +46,14 @@ class ControlsPanel(QWidget):
         layout.addWidget(self.settings_btn)
         layout.addStretch(1)  # Pushes the next widget(s) to the bottom
         layout.addWidget(self.process_btn)
+        
+    def update_savedir(self):
+        if self.pipeline_settings is not None:
+            self.pipeline_settings.savedir = self.path_edit.text()
+
+    def update_savedir_name(self):
+        if self.pipeline_settings is not None:
+            self.pipeline_settings.savedir_name = self.suffix_edit.text()
 
     def browse_folder(self):
         dlg = QFileDialog(self)

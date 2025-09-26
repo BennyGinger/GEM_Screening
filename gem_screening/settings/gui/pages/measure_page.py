@@ -1,9 +1,12 @@
 from PyQt6.QtWidgets import QWidget, QFormLayout, QGroupBox, QVBoxLayout, QCheckBox, QComboBox, QSpinBox, QLabel, QSlider, QHBoxLayout
 from PyQt6.QtCore import Qt
 
+from gem_screening.settings.models import PipelineSettings
+
 class MeasurePage(QWidget):
-    def __init__(self):
+    def __init__(self, pipeline_settings: PipelineSettings):
         super().__init__()
+        self.pipeline_settings = pipeline_settings
         main_layout = QVBoxLayout(self)
 
         # Preset Measure group
@@ -16,7 +19,6 @@ class MeasurePage(QWidget):
         self.intensity_slider = QSlider()
         self.intensity_slider.setOrientation(Qt.Orientation.Horizontal)
         self.intensity_slider.setRange(0, 100)
-        self.intensity_slider.setValue(25)
         self.intensity_value_label = QLabel("25")
         intensity_label = QLabel("Intensity")
         intensity_label.setToolTip("Intensity level for the preset, ranging from 0 to 100. Defaults to 25.")
@@ -27,7 +29,6 @@ class MeasurePage(QWidget):
         self.exposure = QSpinBox()
         self.exposure.setRange(1, 10000)
         self.exposure.setSingleStep(10)
-        self.exposure.setValue(100)
         exposure_label = QLabel("Exposure (ms)")
         exposure_label.setToolTip("Exposure time in milliseconds for the preset. Defaults to 100.")
         preset_layout.addRow(optical_label, self.optical_config)
@@ -55,7 +56,6 @@ class MeasurePage(QWidget):
         self.ref_intensity_slider = QSlider()
         self.ref_intensity_slider.setOrientation(Qt.Orientation.Horizontal)
         self.ref_intensity_slider.setRange(0, 100)
-        self.ref_intensity_slider.setValue(5)
         self.ref_intensity_value_label = QLabel("5")
         ref_intensity_label = QLabel("Intensity")
         ref_intensity_label.setToolTip("Intensity level for the preset, ranging from 0 to 100. Defaults to 5.")
@@ -66,7 +66,6 @@ class MeasurePage(QWidget):
         self.ref_exposure = QSpinBox()
         self.ref_exposure.setRange(1, 10000)
         self.ref_exposure.setSingleStep(10)
-        self.ref_exposure.setValue(100)
         ref_exposure_label = QLabel("Exposure (ms)")
         ref_exposure_label.setToolTip("Exposure time in milliseconds for the preset. Defaults to 100.")
         refseg_layout.addRow(ref_optical_label, self.ref_optical_config)
@@ -93,7 +92,6 @@ class MeasurePage(QWidget):
         self.control_intensity_slider = QSlider()
         self.control_intensity_slider.setOrientation(Qt.Orientation.Horizontal)
         self.control_intensity_slider.setRange(0, 100)
-        self.control_intensity_slider.setValue(40)
         self.control_intensity_value_label = QLabel("40")
         control_intensity_label = QLabel("Intensity")
         control_intensity_label.setToolTip("Intensity level for the preset, ranging from 0 to 100. Defaults to 40.")
@@ -103,7 +101,6 @@ class MeasurePage(QWidget):
         self.control_intensity_slider.valueChanged.connect(lambda v: self.control_intensity_value_label.setText(str(v)))
         self.control_exposure = QSpinBox()
         self.control_exposure.setRange(1, 10000)
-        self.control_exposure.setValue(100)
         control_exposure_label = QLabel("Exposure (ms)")
         control_exposure_label.setToolTip("Exposure time in milliseconds for the preset. Defaults to 100.")
         control_layout.addRow(control_optical_label, self.control_optical_config)
@@ -134,3 +131,81 @@ class MeasurePage(QWidget):
                 widget.setEnabled(enabled)
         self.do_refseg.toggled.connect(set_refseg_enabled)
         set_refseg_enabled(self.do_refseg.isChecked())
+        
+        # Connect signals to update pipeline_settings
+        self.optical_config.currentTextChanged.connect(self.update_measure_optical)
+        self.intensity_slider.valueChanged.connect(self.update_measure_intensity)
+        self.exposure.valueChanged.connect(self.update_measure_exposure)
+        self.do_refseg.toggled.connect(self.update_do_refseg)
+        self.ref_optical_config.currentTextChanged.connect(self.update_refseg_optical)
+        self.ref_intensity_slider.valueChanged.connect(self.update_refseg_intensity)
+        self.ref_exposure.valueChanged.connect(self.update_refseg_exposure)
+        self.do_control.toggled.connect(self.update_do_control)
+        self.control_optical_config.currentTextChanged.connect(self.update_control_optical)
+        self.control_intensity_slider.valueChanged.connect(self.update_control_intensity)
+        self.control_exposure.valueChanged.connect(self.update_control_exposure)
+    
+        # Initialize from pipeline_settings if available
+        if self.pipeline_settings is not None:
+            ms = self.pipeline_settings.measure_settings
+            self.optical_config.setCurrentText(ms.preset_measure.optical_configuration)
+            self.intensity_slider.setValue(ms.preset_measure.intensity)
+            self.intensity_value_label.setText(str(ms.preset_measure.intensity))
+            self.exposure.setValue(ms.preset_measure.exposure_ms)
+            self.do_refseg.setChecked(ms.do_refseg)
+            self.ref_optical_config.setCurrentText(ms.preset_refseg.optical_configuration)
+            self.ref_intensity_slider.setValue(ms.preset_refseg.intensity)
+            self.ref_intensity_value_label.setText(str(ms.preset_refseg.intensity))
+            self.ref_exposure.setValue(ms.preset_refseg.exposure_ms)
+            cs = self.pipeline_settings.control_settings
+            self.do_control.setChecked(cs.control_loop)
+            self.control_optical_config.setCurrentText(cs.preset.optical_configuration)
+            self.control_intensity_slider.setValue(cs.preset.intensity)
+            self.control_intensity_value_label.setText(str(cs.preset.intensity))
+            self.control_exposure.setValue(cs.preset.exposure_ms)
+
+    def update_measure_optical(self, value: str):
+        if self.pipeline_settings is not None:
+            self.pipeline_settings.measure_settings.preset_measure.optical_configuration = value
+
+    def update_measure_intensity(self, value: int):
+        if self.pipeline_settings is not None:
+            self.pipeline_settings.measure_settings.preset_measure.intensity = value
+
+    def update_measure_exposure(self, value: int):
+        if self.pipeline_settings is not None:
+            self.pipeline_settings.measure_settings.preset_measure.exposure_ms = value
+
+    def update_do_refseg(self, checked: bool):
+        if self.pipeline_settings is not None:
+            self.pipeline_settings.measure_settings.do_refseg = checked
+
+    def update_refseg_optical(self, value: str):
+        if self.pipeline_settings is not None:
+            self.pipeline_settings.measure_settings.preset_refseg.optical_configuration = value
+
+    def update_refseg_intensity(self, value: int):
+        if self.pipeline_settings is not None:
+            self.pipeline_settings.measure_settings.preset_refseg.intensity = value
+
+    def update_refseg_exposure(self, value: int):
+        if self.pipeline_settings is not None:
+            self.pipeline_settings.measure_settings.preset_refseg.exposure_ms = value
+
+    def update_do_control(self, checked: bool):
+        if self.pipeline_settings is not None:
+            self.pipeline_settings.control_settings.control_loop = checked
+
+    def update_control_optical(self, value: str):
+        if self.pipeline_settings is not None:
+            self.pipeline_settings.control_settings.preset.optical_configuration = value
+
+    def update_control_intensity(self, value: int):
+        if self.pipeline_settings is not None:
+            self.pipeline_settings.control_settings.preset.intensity = value
+
+    def update_control_exposure(self, value: int):
+        if self.pipeline_settings is not None:
+            self.pipeline_settings.control_settings.preset.exposure_ms = value
+        
+        

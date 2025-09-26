@@ -1,8 +1,11 @@
 from PyQt6.QtWidgets import QWidget, QFormLayout, QLineEdit, QComboBox, QLabel
 
+from gem_screening.settings.models import PipelineSettings
+
 class LoggingPage(QWidget):
-    def __init__(self):
+    def __init__(self, pipeline_settings: PipelineSettings):
         super().__init__()
+        self.pipeline_settings = pipeline_settings
         layout = QFormLayout(self)
 
         # Log Level
@@ -18,3 +21,20 @@ class LoggingPage(QWidget):
         logfile_label = QLabel("Logfile Name")
         logfile_label.setToolTip("The file name where logs will be saved. Defaults to 'gem_screening.log'.")
         layout.addRow(logfile_label, self.logfile)
+
+        # Connect signals to update pipeline_settings
+        self.level.currentTextChanged.connect(self.update_log_level)
+        self.logfile.textChanged.connect(self.update_logfile_name)
+
+        # If pipeline_settings provided, initialize fields from it
+        if self.pipeline_settings is not None:
+            self.level.setCurrentText(self.pipeline_settings.logging_settings.log_level)
+            self.logfile.setText(self.pipeline_settings.logging_settings.logfile_name)
+
+    def update_log_level(self, value: str):
+        if self.pipeline_settings is not None:
+            self.pipeline_settings.logging_settings.log_level = value
+
+    def update_logfile_name(self, value: str):
+        if self.pipeline_settings is not None:
+            self.pipeline_settings.logging_settings.logfile_name = value

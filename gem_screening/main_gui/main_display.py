@@ -4,7 +4,7 @@ class MainDisplay(QWidget):
     def __init__(self):
         super().__init__()
         self._layout = QVBoxLayout(self)
-        self.placeholder = QLabel("Main Area (2/3 of window)")
+        self.placeholder = QLabel()
         self._layout.addWidget(self.placeholder)
 
     def set_widget(self, widget):

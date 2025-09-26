@@ -1,13 +1,14 @@
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSizePolicy
-from PyQt6.QtCore import Qt, QRect, QSize
+from PyQt6.QtWidgets import QWidget, QSizePolicy
+from PyQt6.QtCore import Qt, QRect, pyqtSignal, QPoint
 from PyQt6.QtGui import QPainter, QPen, QColor, QFont
 
 class WellSelectionWidget(QWidget):
-    def _reset_drag(self):
-        self._drag_active = False
-        self._drag_mode = None
-        self._drag_start = None
-        self._drag_end = None
+    selectionChanged = pyqtSignal(list)
+    def _reset_drag(self) -> None:
+        self._drag_active: bool = False
+        self._drag_mode: str | None = None
+        self._drag_start: QPoint | None = None
+        self._drag_end: QPoint | None = None
 
     def mousePressEvent(self, a0):
         if self.dish_type == "35mm":
@@ -41,6 +42,7 @@ class WellSelectionWidget(QWidget):
         self._apply_drag_selection()
         self._reset_drag()
         self.update()
+        self.selectionChanged.emit(self.selected_wells)
 
     def _get_cell_geometry(self):
         w, h = self.width(), self.height()
@@ -81,18 +83,22 @@ class WellSelectionWidget(QWidget):
                 if well in self.selected_wells:
                     self.selected_wells.remove(well)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
-        self.dish_type = "35mm"
-        self.selected_wells = ["A1"]
-        self.rows = 1
-        self.cols = 1
-        self.row_labels = ["A"]
-        self.col_labels = ["1"]
+        self.dish_type: str = "35mm"
+        self.selected_wells: list[str] = ["A1"]
+        self.rows: int = 1
+        self.cols: int = 1
+        self.row_labels: list[str] = ["A"]
+        self.col_labels: list[str] = ["1"]
+        self._drag_active: bool = False
+        self._drag_mode: str | None = None
+        self._drag_start = None
+        self._drag_end = None
         self.setMinimumSize(200, 320)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
-    def set_dish(self, dish_type):
+    def set_dish(self, dish_type: str) -> None:
         self.dish_type = dish_type
         if dish_type == "35mm":
             self.rows, self.cols = 1, 1
@@ -184,6 +190,10 @@ class WellSelectionWidget(QWidget):
             painter.drawRect(drag_rect)
         # Mouse event logic for selection is handled in mousePressEvent, not here.
 
+    def set_selection(self, wells: list[str]) -> None:
+        self.selected_wells = wells if wells is not None else []
+        self.update()
+    
     def _cell_at(self, pos):
         cell_w, cell_h, x0, y0 = self._get_cell_geometry()
         table_w = self.cols * cell_w

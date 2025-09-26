@@ -4,7 +4,9 @@ from PyQt6.QtWidgets import QApplication, QMainWindow, QSplitter, QTextEdit
 from PyQt6.QtCore import Qt
 from gem_screening.main_gui.controls_panel import ControlsPanel
 from gem_screening.main_gui.main_display import MainDisplay
+
 from gem_screening.settings.gui.main_window import MainWindow as SettingsWindow
+from gem_screening.settings.models import PipelineSettings, LoggingSettings, AcquisitionSettings, DishSettings, MeasureSettings, ServerSettings, ControlSettings, StimSettings
 
 
 class MainGui(QMainWindow):
@@ -13,6 +15,19 @@ class MainGui(QMainWindow):
         self.setWindowTitle("GEM Screening Main GUI")
         self.showMaximized()
 
+        # Create a shared PipelineSettings object
+        self.pipeline_settings = PipelineSettings(
+            savedir="/tmp",  # or a sensible default
+            savedir_name="default",
+            logging_settings=LoggingSettings(),
+            acquisition_settings=AcquisitionSettings(),
+            dish_settings=DishSettings(),
+            measure_settings=MeasureSettings(),
+            server_settings=ServerSettings(),
+            control_settings=ControlSettings(),
+            stim_settings=StimSettings(),
+        )
+
         # Main horizontal splitter (left 1/3, right 2/3)
         main_splitter = QSplitter(Qt.Orientation.Horizontal)
         main_splitter.setHandleWidth(8)
@@ -20,6 +35,7 @@ class MainGui(QMainWindow):
 
         # Left side (1/3): vertical splitter (top: controls, bottom: terminal)
         left_splitter = QSplitter(Qt.Orientation.Vertical)
+
 
         # Top: user controls panel
         self.controls_widget = ControlsPanel()
@@ -45,6 +61,11 @@ class MainGui(QMainWindow):
         main_splitter.addWidget(self.main_display)
         main_splitter.setStretchFactor(0, 1)
         main_splitter.setStretchFactor(1, 2)
+        # Set initial splitter position: left 1/3, right 2/3
+        # This assumes the window is maximized or a reasonable size
+        screen = self.screen()
+        screen_width = screen.geometry().width() if screen is not None else 1200
+        main_splitter.setSizes([screen_width // 3, screen_width * 2 // 3])
         # Prevent right pane from collapsing below its minimum size
         main_splitter.setCollapsible(1, False)
 
@@ -61,14 +82,14 @@ class MainGui(QMainWindow):
                 from gem_screening.settings.gui.pages.server_page import ServerPage
                 from gem_screening.settings.gui.pages.stim_page import StimPage
                 pages = [
-                    ("Logging", LoggingPage()),
-                    ("Microscope", AcquisitionPage()),
-                    ("Dish", DishPage()),
-                    ("Optics", MeasurePage()),
-                    ("Server", ServerPage()),
-                    ("Light-Stimulation", StimPage()),
+                    ("Logging", LoggingPage(self.pipeline_settings)),
+                    ("Microscope", AcquisitionPage(self.pipeline_settings)),
+                    ("Dish", DishPage(self.pipeline_settings)),
+                    ("Optics", MeasurePage(self.pipeline_settings)),
+                    ("Server", ServerPage(self.pipeline_settings)),
+                    ("Light-Stimulation", StimPage(self.pipeline_settings)),
                 ]
-                self.settings_gui = SettingsWindow(pages)
+                self.settings_gui = SettingsWindow(pages, self.pipeline_settings)
             self.main_display.set_widget(self.settings_gui)
             self.settings_visible = True
         else:

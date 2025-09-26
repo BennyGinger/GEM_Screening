@@ -1,8 +1,11 @@
 from PyQt6.QtWidgets import QWidget, QFormLayout, QSpinBox, QDoubleSpinBox, QCheckBox, QComboBox, QLabel, QGroupBox, QPushButton, QHBoxLayout, QSpacerItem, QSizePolicy, QLineEdit
 
+from gem_screening.settings.models import PipelineSettings
+
 class ServerPage(QWidget):
-    def __init__(self):
+    def __init__(self, pipeline_settings: PipelineSettings):
         super().__init__()
+        self.pipeline_settings = pipeline_settings
         layout = QFormLayout(self)
         # Model Type
         self.model_type = QComboBox()
@@ -156,3 +159,89 @@ class ServerPage(QWidget):
         self.advanced_btn.clicked.connect(toggle_advanced)
         layout.addRow(self.advanced_btn)
         layout.addRow(self.advanced_box)
+        
+        # Connect signals to update pipeline_settings
+        self.model_type.currentTextChanged.connect(self.update_model_type)
+        self.pretrained_model_input.textChanged.connect(self.update_pretrained_model)
+        self.do_denoise.toggled.connect(self.update_do_denoise)
+        self.restore_type.currentTextChanged.connect(self.update_restore_type)
+        self.diameter.valueChanged.connect(self.update_diameter)
+        self.flow_threshold.valueChanged.connect(self.update_flow_threshold)
+        self.cellprob_threshold.valueChanged.connect(self.update_cellprob_threshold)
+        self.do_3D.toggled.connect(self.update_do_3D)
+        self.stitch_threshold_3D.valueChanged.connect(self.update_stitch_threshold_3D)
+        self.track_stitch_threshold.valueChanged.connect(self.update_track_stitch_threshold)
+        self.sigma.valueChanged.connect(self.update_sigma)
+        self.size_spinbox.valueChanged.connect(self.update_size)
+        self.gpu.toggled.connect(self.update_gpu)
+
+        # Initialize from pipeline_settings if available
+        if self.pipeline_settings is not None:
+            ss = self.pipeline_settings.server_settings
+            self.model_type.setCurrentText(ss.model_type)
+            if hasattr(self, 'pretrained_model_input'):
+                self.pretrained_model_input.setText(getattr(ss, 'pretrained_model_path', ''))
+            self.do_denoise.setChecked(ss.do_denoise)
+            self.restore_type.setCurrentText(ss.restore_type)
+            self.diameter.setValue(ss.diameter)
+            self.flow_threshold.setValue(ss.flow_threshold)
+            self.cellprob_threshold.setValue(ss.cellprob_threshold)
+            self.do_3D.setChecked(ss.do_3D)
+            self.stitch_threshold_3D.setValue(ss.stitch_threshold_3D)
+            self.track_stitch_threshold.setValue(ss.track_stitch_threshold)
+            self.sigma.setValue(ss.sigma)
+            self.size_spinbox.setValue(ss.size)
+            self.gpu.setChecked(ss.gpu)
+
+    def update_model_type(self, value):
+        if self.pipeline_settings is not None:
+            self.pipeline_settings.server_settings.model_type = value
+
+    def update_pretrained_model(self, value):
+        if self.pipeline_settings is not None:
+            setattr(self.pipeline_settings.server_settings, 'pretrained_model_path', value)
+
+    def update_do_denoise(self, checked):
+        if self.pipeline_settings is not None:
+            self.pipeline_settings.server_settings.do_denoise = checked
+
+    def update_restore_type(self, value):
+        if self.pipeline_settings is not None:
+            self.pipeline_settings.server_settings.restore_type = value
+
+    def update_diameter(self, value):
+        if self.pipeline_settings is not None:
+            self.pipeline_settings.server_settings.diameter = value
+
+    def update_flow_threshold(self, value):
+        if self.pipeline_settings is not None:
+            self.pipeline_settings.server_settings.flow_threshold = value
+
+    def update_cellprob_threshold(self, value):
+        if self.pipeline_settings is not None:
+            self.pipeline_settings.server_settings.cellprob_threshold = value
+
+    def update_do_3D(self, checked):
+        if self.pipeline_settings is not None:
+            self.pipeline_settings.server_settings.do_3D = checked
+
+    def update_stitch_threshold_3D(self, value):
+        if self.pipeline_settings is not None:
+            self.pipeline_settings.server_settings.stitch_threshold_3D = value
+
+    def update_track_stitch_threshold(self, value):
+        if self.pipeline_settings is not None:
+            self.pipeline_settings.server_settings.track_stitch_threshold = value
+
+    def update_sigma(self, value):
+        if self.pipeline_settings is not None:
+            self.pipeline_settings.server_settings.sigma = value
+
+    def update_size(self, value):
+        if self.pipeline_settings is not None:
+            self.pipeline_settings.server_settings.size = value
+
+    def update_gpu(self, checked):
+        if self.pipeline_settings is not None:
+            self.pipeline_settings.server_settings.gpu = checked
+        

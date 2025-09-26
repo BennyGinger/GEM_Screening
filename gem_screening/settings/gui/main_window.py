@@ -2,7 +2,8 @@
 from PyQt6.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QListWidget, QStackedWidget, QCheckBox
 
 class MainWindow(QMainWindow):
-    def __init__(self, pages):
+    def __init__(self, pages, pipeline_settings=None):
+        self.pipeline_settings = pipeline_settings
         super().__init__()
         self.setWindowTitle("Settings GUI")
         self.resize(900, 600)
