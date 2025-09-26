@@ -2,6 +2,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from functools import partial
+from typing import Callable
 
 from a1_manager import A1Manager
 from progress_bar import setup_progress_monitor as progress_bar
@@ -10,13 +11,14 @@ from gem_screening.utils.client.service import bg_removal_client, full_process_c
 from gem_screening.utils.filesystem import imwrite_atomic
 from gem_screening.utils.identifiers import parse_category_instance
 from gem_screening.utils.pipeline_constants import REFSEG_LABEL
-from gem_screening.settings.models import PipelineSettings, PresetMeasure, PresetControl, ServerSettings
+from gem_screening.settings.models import PipelineSettings, PresetMeasure, PresetRefseg, PresetControl, ServerSettings
 from gem_screening.well_data.well_classes import FieldOfView, Well
 
 
 # Set up logging
 logger = logging.getLogger(__name__)
 
+BATCH_SIZE = 16
 
 def image_fovs(well_obj: Well, a1_manager: A1Manager, settings: PipelineSettings, imaging_loop: str, fov_ids: list[str] | None = None) -> None:
     """
@@ -41,19 +43,28 @@ def image_fovs(well_obj: Well, a1_manager: A1Manager, settings: PipelineSettings
     fovs_to_process = _get_fovs_from_ids(well_obj, fov_ids) if fov_ids is not None else well_obj.positive_fovs
     
     # Setup the imaging loop
-    server_settings: ServerSettings = settings.server_settings
-    server_settings.well_id = well_obj.well_id
-    server_settings.dst_folder = str(well_obj.mask_dir)
-    server_settings.total_fovs = len(fovs_to_process)
+    server_settings = _init_settings(well_obj, settings, fovs_to_process)
     
-    # Initialize the different steps functions
-    snap = partial(_take_image_fov, a1_manager=a1_manager)
+    # Define the steps based on the imaging loop
+    steps = _create_imaging_steps(settings, imaging_loop, server_settings)
+
+    # Process the FOVs as batches
+    _process_fovs(imaging_loop, fovs_to_process, a1_manager, steps)
+    
+    # Save the well object
+    well_obj.to_json()
+
+def _create_imaging_steps(settings: PipelineSettings, imaging_loop: str, server_settings: ServerSettings) -> list[tuple[str, PresetMeasure | PresetControl | PresetRefseg, Callable]]:
+    """
+    Set up the imaging steps based on the imaging loop type. Returns a list of tuples containing (loop_name, preset, post_fn), with post_fn being either bg_removal or full_process.
+    """
+    
+    # Define the post-processing functions
     bg_removal = partial(bg_removal_client, server_settings)
     full_process = partial(full_process_client, server_settings)
     
-    # Determine the different steps of the imaging loop
-    
-    steps = []
+    # Define the steps based on the imaging loop
+    steps: list[tuple[str, PresetMeasure | PresetControl | PresetRefseg, Callable]] = []
     if 'measure' in imaging_loop:
         measure_preset: PresetMeasure = settings.measure_settings.preset_measure
         do_refseg = settings.measure_settings.do_refseg
@@ -72,33 +83,47 @@ def image_fovs(well_obj: Well, a1_manager: A1Manager, settings: PipelineSettings
     
     else:
         raise ValueError(f"Invalid imaging loop: {imaging_loop}. Expected 'measure' or 'control' in the loop name.")
+    return steps
+
+def _init_settings(well_obj: Well, settings: PipelineSettings, fovs_to_process: list[FieldOfView]) -> ServerSettings:
+    """
+    Initialize server settings for the imaging process, by updating the well ID, destination folder, and total FOVs.
+    """
+    server_settings: ServerSettings = settings.server_settings
+    server_settings.well_id = well_obj.well_id
+    server_settings.dst_folder = str(well_obj.mask_dir)
+    server_settings.total_fovs = len(fovs_to_process)
+    return server_settings
+
+def _process_fovs(imaging_loop: str, fovs_to_process: list[FieldOfView], a1_manager: A1Manager, steps: list[tuple]) -> None:
+    """
+    Process the FOVs in batches, taking images and applying post-processing functions.
+    """
+    # Define the snap function
+    snap = partial(_take_image_fov, a1_manager=a1_manager)
     
-    # Run the steps
+    # Initialize batches for each step and total FOV count
+    batches = [[] for _ in steps]
     total_fovs = len(fovs_to_process)
-    for fov in progress_bar(fovs_to_process,
-                            desc=f"Imaging {imaging_loop}",
-                            total=total_fovs):
-        for loop_name, preset, post_fn in steps:
-            # Take image of the fov
-            img_path = snap(fov, input_preset=preset, imaging_loop=loop_name)
-            
-            # Post-process the image
-            post_fn(img_path)
     
-    # Save the well object
-    well_obj.to_json()
+    # Process each FOV
+    for fov in progress_bar(fovs_to_process, desc=f"Imaging {imaging_loop}", total=total_fovs):
+        for i, (loop_name, preset, post_fn) in enumerate(steps):
+            img_path = snap(fov, input_preset=preset, imaging_loop=loop_name)
+            batches[i].append(img_path)
+            if len(batches[i]) >= BATCH_SIZE:
+                post_fn(batches[i])
+                batches[i] = []
+
+    # Process any remaining images in each batch
+    for batch, (_, _, post_fn) in zip(batches, steps):
+        if batch:
+            post_fn(batch)
 
 def _get_fovs_from_ids(well_obj: Well, fov_ids: list[str]) -> list[FieldOfView]:
     """
-    Convert a list of FOV ID strings to FieldOfView objects from the well.
+    Convert a list of FOV ID strings to list of FieldOfView objects from the well.
     
-    Args:
-        well_obj (Well): The well object containing the field of views.
-        fov_ids (list[str]): List of FOV ID strings (e.g., ["A1P0", "A1P1"]).
-        
-    Returns:
-        list[FieldOfView]: List of FieldOfView objects matching the provided FOV IDs.
-        
     Raises:
         ValueError: If any FOV ID is not found in the well's positive FOVs.
     """
@@ -116,14 +141,7 @@ def _get_fovs_from_ids(well_obj: Well, fov_ids: list[str]) -> list[FieldOfView]:
 
 def _take_image_fov(fov_obj: FieldOfView, input_preset: PresetMeasure | PresetControl, imaging_loop: str, a1_manager: A1Manager) -> Path:
     """
-    Take an image of a field of view and save it to the specified directory.
-    Args:
-        fov_obj (FieldOfView): The field of view object containing the coordinates and ID.
-        input_preset (PresetMeasure | PresetControl): The preset settings for the imaging.
-        imaging_loop (str): The imaging loop label to use for the acquisition.
-        a1_manager (A1Manager): The A1Manager object to control the microscope.
-    Returns:
-        Path: The path where the image is saved.
+    Snap an image at the specified FOV using the given A1Manager and preset settings.
     """
     # Position stage
     a1_manager.nikon.set_stage_position(fov_obj.fov_coord)
@@ -142,4 +160,3 @@ def _take_image_fov(fov_obj: FieldOfView, input_preset: PresetMeasure | PresetCo
     
     # Build the payload for the image processing request
     return img_path
-
