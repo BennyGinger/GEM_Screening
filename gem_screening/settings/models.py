@@ -131,6 +131,7 @@ class StimSettings(BaseModel):
     """
     Pydantic model for Settings for stimulation masks.
     Attributes:
+        do_illuminate (bool, optional): If True, will perform light stimulation. Defaults to True.
         true_cell_threshold (int, optional): Mean intensity threshold for true cell detection. Below this value, cells are considered noise and set to 0 in the output. Defaults to 50.
         crop_size (int, optional): Size of the crop for the display of the ROI, for the CellTinder GUI, to select positive cells. Defaults to 251.
         erosion_factor (int, optional): Erosion factor for the stimulation masks to avoid stimulation of neighboring cells. Defaults to 3.
@@ -138,6 +139,7 @@ class StimSettings(BaseModel):
     Notes:
         - `PresetStim` contains the optical configuration (str), intensity (%), and exposure time (sec) for light stimulation.
     """
+    do_illuminate: bool = True
     true_cell_threshold: int = 50
     crop_size: int = 251
     erosion_factor: int = 3
@@ -150,7 +152,7 @@ class ServerSettings(BaseModel):
         sigma (float, optional): Sigma value for background subtraction. Defaults to 0.
         size (int, optional): Size parameter for background subtraction. Defaults to 7.
         do_denoise (bool, optional): If True, will use the denoising model. Defaults to True. Deprecated in cellpose>=4.0, parameter will be ignored.
-        model_type (str, optional): Type of the Cellpose model, e.g., 'cyto2', 'cyto3'. Defaults to 'cpsam'.
+        model_type (str, optional): Type of the Cellpose model, e.g., 'cyto2', 'cyto3'. Defaults to 'cyto3'.
         restore_type (str, optional): Type of restoration for the Cellpose model, e.g., 'denoise_cyto2', 'denoise_cyto3'. Defaults to 'denoise_cyto3'. Deprecated in cellpose>=4.0, parameter will be ignored.
         gpu (bool, optional): If True, will use GPU for processing. Defaults to True.
         channels (list[int], optional): List of channels to use for segmentation. Defaults to None. Deprecated in cellpose>=4.0, parameter will be ignored.
@@ -172,7 +174,7 @@ class ServerSettings(BaseModel):
     sigma: float = 0.0
     size: int = 7
     do_denoise: bool = True
-    model_type: str = 'cpsam'
+    model_type: str = 'cyto3'
     restore_type: str = 'denoise_cyto3'
     gpu: bool = True
     channels: list[int] | None = None

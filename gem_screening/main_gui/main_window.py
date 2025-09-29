@@ -10,23 +10,25 @@ from gem_screening.settings.models import PipelineSettings, LoggingSettings, Acq
 
 
 class MainGui(QMainWindow):
-    def __init__(self):
+    def __init__(self, pipeline_settings: PipelineSettings | None = None):
         super().__init__()
         self.setWindowTitle("GEM Screening Main GUI")
         self.showMaximized()
 
         # Create a shared PipelineSettings object
-        self.pipeline_settings = PipelineSettings(
-            savedir="/tmp",  # or a sensible default
-            savedir_name="default",
-            logging_settings=LoggingSettings(),
-            acquisition_settings=AcquisitionSettings(),
-            dish_settings=DishSettings(),
-            measure_settings=MeasureSettings(),
-            server_settings=ServerSettings(),
-            control_settings=ControlSettings(),
-            stim_settings=StimSettings(),
-        )
+        if pipeline_settings is not None:
+            self.pipeline_settings = pipeline_settings
+        else:
+            self.pipeline_settings = PipelineSettings(
+                savedir="Paste or write folder path...",
+                savedir_name="Optional suffix (e.g. test_run)",
+                logging_settings=LoggingSettings(),
+                acquisition_settings=AcquisitionSettings(),
+                dish_settings=DishSettings(),
+                measure_settings=MeasureSettings(),
+                server_settings=ServerSettings(),
+                control_settings=ControlSettings(),
+                stim_settings=StimSettings(),)
 
         # Main horizontal splitter (left 1/3, right 2/3)
         main_splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -37,9 +39,6 @@ class MainGui(QMainWindow):
         left_splitter = QSplitter(Qt.Orientation.Vertical)
 
 
-        # Top: user controls panel
-        self.controls_widget = ControlsPanel()
-        self.controls_widget.settings_btn.clicked.connect(self.toggle_settings)
 
         # Bottom: terminal/progress display
         self.terminal_widget = QTextEdit()
@@ -47,9 +46,15 @@ class MainGui(QMainWindow):
         self.terminal_widget.setPlaceholderText("Terminal/Progress Output...")
         self.terminal_widget.setStyleSheet("background-color: #23272e; color: #f8f8f2;")
 
+        # Top: user controls panel
+        self.controls_widget = ControlsPanel(self.pipeline_settings)
+        self.controls_widget.settings_btn.clicked.connect(self.toggle_settings)
+        self.controls_widget.mock_output_signal.connect(self.append_terminal)
+
         left_splitter.addWidget(self.controls_widget)
         left_splitter.addWidget(self.terminal_widget)
         left_splitter.setSizes([300, 200])
+
 
         # Right side (2/3): main area with stack for switching
         self.main_display = MainDisplay()
@@ -70,6 +75,9 @@ class MainGui(QMainWindow):
         main_splitter.setCollapsible(1, False)
 
         self.setCentralWidget(main_splitter)
+    
+    def append_terminal(self, msg: str):
+        self.terminal_widget.append(msg)
 
     def toggle_settings(self):
         if not self.settings_visible:
@@ -77,15 +85,11 @@ class MainGui(QMainWindow):
             if self.settings_gui is None:
                 from gem_screening.settings.gui.pages.logging_page import LoggingPage
                 from gem_screening.settings.gui.pages.acquisition_page import AcquisitionPage
-                from gem_screening.settings.gui.pages.dish_page import DishPage
-                from gem_screening.settings.gui.pages.measure_page import MeasurePage
                 from gem_screening.settings.gui.pages.server_page import ServerPage
                 from gem_screening.settings.gui.pages.stim_page import StimPage
                 pages = [
                     ("Logging", LoggingPage(self.pipeline_settings)),
-                    ("Microscope", AcquisitionPage(self.pipeline_settings)),
-                    ("Dish", DishPage(self.pipeline_settings)),
-                    ("Optics", MeasurePage(self.pipeline_settings)),
+                    ("Acquisition", AcquisitionPage(self.pipeline_settings)),
                     ("Server", ServerPage(self.pipeline_settings)),
                     ("Light-Stimulation", StimPage(self.pipeline_settings)),
                 ]

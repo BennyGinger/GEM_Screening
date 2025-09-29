@@ -1,13 +1,23 @@
-from PyQt6.QtWidgets import QWidget, QFormLayout, QSpinBox, QComboBox, QLabel, QGroupBox, QPushButton, QSlider, QHBoxLayout
+from PyQt6.QtWidgets import QWidget, QFormLayout, QSpinBox, QComboBox, QLabel, QGroupBox, QPushButton, QSlider, QHBoxLayout, QCheckBox
 from PyQt6.QtCore import Qt
 
 from gem_screening.settings.models import PipelineSettings
 
+
+
 class StimPage(QWidget):
+
     def __init__(self, pipeline_settings: PipelineSettings):
         super().__init__()
         self.pipeline_settings = pipeline_settings
         layout = QFormLayout(self)
+
+        # Do Illumination Checkbox
+        self.do_illumination = QCheckBox("Do Illumination")
+        self.do_illumination.setChecked(True)
+        self.do_illumination.setToolTip("If unchecked, all illumination settings below are disabled.")
+        layout.addRow(self.do_illumination)
+
 
         # Optical Config
         self.optical_config = QComboBox()
@@ -15,6 +25,7 @@ class StimPage(QWidget):
         optical_label = QLabel("Optical Config")
         optical_label.setToolTip("Optical configuration for the preset, e.g., 'BFP' or 'RFP'. Defaults to 'BFP'.")
         layout.addRow(optical_label, self.optical_config)
+
 
         # Intensity (Slider)
         self.intensity_slider = QSlider()
@@ -30,6 +41,7 @@ class StimPage(QWidget):
         self.intensity_slider.valueChanged.connect(lambda v: self.intensity_value_label.setText(str(v)))
         layout.addRow(intensity_label, intensity_layout)
 
+
         # Exposure (sec)
         self.exposure_sec = QSpinBox()
         self.exposure_sec.setRange(1, 10000)
@@ -37,6 +49,7 @@ class StimPage(QWidget):
         exposure_label = QLabel("Exposure (sec)")
         exposure_label.setToolTip("Exposure time in seconds for the preset. Defaults to 10.")
         layout.addRow(exposure_label, self.exposure_sec)
+
 
         # Advanced settings box (hidden by default)
         self.advanced_box = QGroupBox()
@@ -79,7 +92,7 @@ class StimPage(QWidget):
         layout.addRow(self.advanced_btn)
         layout.addRow(self.advanced_box)
 
-        # Connect signals to update pipeline_settings (at the end of __init__)
+        # Connect signals to update pipeline_settings
         self.optical_config.currentTextChanged.connect(self.update_optical_config)
         self.intensity_slider.valueChanged.connect(self.update_intensity)
         self.exposure_sec.valueChanged.connect(self.update_exposure_sec)
@@ -106,9 +119,29 @@ class StimPage(QWidget):
         self.crop_size.valueChanged.connect(self.update_crop_size)
         self.erosion_factor.valueChanged.connect(self.update_erosion_factor)
 
+        # Connect do_illumination to settings and enable/disable widgets
+        def set_illumination_enabled(enabled):
+            for widget in [
+                self.optical_config,
+                self.intensity_slider,
+                self.intensity_value_label,
+                self.exposure_sec,
+                self.advanced_btn,
+                self.advanced_box
+            ]:
+                widget.setEnabled(enabled)
+        self.do_illumination.toggled.connect(set_illumination_enabled)
+        set_illumination_enabled(self.do_illumination.isChecked())
+        self.do_illumination.toggled.connect(self.update_do_illumination)
+
         # Initialize from pipeline_settings if available
         if self.pipeline_settings is not None:
             stim = self.pipeline_settings.stim_settings
+            # Set do_illumination if present, else default True
+            if hasattr(stim, 'do_illuminate'):
+                self.do_illumination.setChecked(stim.do_illuminate)
+            else:
+                self.do_illumination.setChecked(True)
             self.optical_config.setCurrentText(stim.preset.optical_configuration)
             self.intensity_slider.setValue(stim.preset.intensity)
             self.intensity_value_label.setText(str(stim.preset.intensity))
@@ -116,6 +149,9 @@ class StimPage(QWidget):
             self.true_cell_threshold.setValue(stim.true_cell_threshold)
             self.crop_size.setValue(stim.crop_size)
             self.erosion_factor.setValue(stim.erosion_factor)
+    def update_do_illumination(self, checked: bool):
+        if self.pipeline_settings is not None:
+            self.pipeline_settings.stim_settings.do_illuminate = checked
 
     def update_optical_config(self, value):
         if self.pipeline_settings is not None:

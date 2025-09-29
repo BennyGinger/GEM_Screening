@@ -1,8 +1,13 @@
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QCheckBox, QPushButton, QFileDialog
+from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtCore import QDateTime, Qt
 
+from gem_screening.settings.models import PipelineSettings
+
+
 class ControlsPanel(QWidget):
-    def __init__(self, pipeline_settings=None):
+    mock_output_signal = pyqtSignal(str)
+    def __init__(self, pipeline_settings: PipelineSettings):
         super().__init__()
         self.pipeline_settings = pipeline_settings
         layout = QVBoxLayout(self)
@@ -12,7 +17,7 @@ class ControlsPanel(QWidget):
         path_layout = QHBoxLayout()
         path_label = QLabel("Experiment folder:")
         self.path_edit = QLineEdit()
-        self.path_edit.setPlaceholderText("Paste or write folder path...")
+        self.path_edit.setToolTip("Path to the main experiment folder where results will be saved.")
         self.path_edit.textChanged.connect(self.update_savedir)
         browse_btn = QPushButton("Browse")
         browse_btn.clicked.connect(self.browse_folder)
@@ -26,8 +31,15 @@ class ControlsPanel(QWidget):
         timestamp = QDateTime.currentDateTime().toString("yyyyMMdd_")
         self.timestamp_label = QLabel(timestamp)
         self.suffix_edit = QLineEdit()
-        self.suffix_edit.setPlaceholderText("Optional suffix (e.g. test_run)")
+        self.suffix_edit.setToolTip("Optional suffix to append to the experiment folder name.")
         self.suffix_edit.textChanged.connect(self.update_savedir_name)
+
+        # If pipeline_settings provided, initialize fields from it
+        if self.pipeline_settings is not None:
+            if hasattr(self.pipeline_settings, 'savedir') and self.pipeline_settings.savedir:
+                self.path_edit.setText(str(self.pipeline_settings.savedir))
+            if hasattr(self.pipeline_settings, 'savedir_name') and self.pipeline_settings.savedir_name:
+                self.suffix_edit.setText(str(self.pipeline_settings.savedir_name))
         ts_layout.addWidget(QLabel("Folder name:"))
         ts_layout.addWidget(self.timestamp_label)
         ts_layout.addWidget(self.suffix_edit)
@@ -35,17 +47,34 @@ class ControlsPanel(QWidget):
 
         # Checkboxes
         self.cb_overwrite_calib = QCheckBox("Restart calibration")
+        self.cb_overwrite_calib.setToolTip("If checked, the calibration will be restarted.")
         self.cb_overwrite_af = QCheckBox("Restart autofocus")
+        self.cb_overwrite_af.setToolTip("If checked, the autofocus will be restarted.")
         layout.addWidget(self.cb_overwrite_calib)
         layout.addWidget(self.cb_overwrite_af)
-
-        # Buttons (Settings at top, Process at bottom)
+        self.cb_overwrite_calib.toggled.connect(self.update_overwrite_calib)
+        self.cb_overwrite_af.toggled.connect(self.update_overwrite_autofocus)
+    
+        # Settings
         self.settings_btn = QPushButton("Settings")
-        self.process_btn = QPushButton("Process")
-        self.process_btn.setStyleSheet("background-color: #c0392b; color: white;")
         layout.addWidget(self.settings_btn)
         layout.addStretch(1)  # Pushes the next widget(s) to the bottom
+        
+        # Process
+        self.process_btn = QPushButton("Process")
+        self.process_btn.setStyleSheet("background-color: #c0392b; color: white;")
         layout.addWidget(self.process_btn)
+
+        # For now, connect to a mock pipeline launcher
+        self.process_btn.clicked.connect(self.mock_pipeline)
+
+
+    def mock_pipeline(self):
+        # This function mimics launching the pipeline and can be extended to show pop-up or embedded GUI
+        msg = f"[MOCK] Pipeline would launch here with settings: {self.pipeline_settings}"
+        self.mock_output_signal.emit(msg)
+        # Example: show a placeholder pop-up or call a callback to main window
+        # You can replace this with a signal or callback to integrate with the main GUI
         
     def update_savedir(self):
         if self.pipeline_settings is not None:
@@ -62,3 +91,11 @@ class ControlsPanel(QWidget):
             selected = dlg.selectedFiles()
             if selected:
                 self.path_edit.setText(selected[0])
+    
+    def update_overwrite_calib(self, checked):
+        if self.pipeline_settings is not None and hasattr(self.pipeline_settings, 'dish_settings'):
+            self.pipeline_settings.dish_settings.overwrite_calib = checked
+
+    def update_overwrite_autofocus(self, checked):
+        if self.pipeline_settings is not None and hasattr(self.pipeline_settings, 'dish_settings'):
+            self.pipeline_settings.dish_settings.overwrite_autofocus = checked
