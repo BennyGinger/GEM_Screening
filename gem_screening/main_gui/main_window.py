@@ -1,4 +1,6 @@
 import logging
+from typing import Callable
+import os
 
 from numpy.typing import NDArray
 from PyQt6.QtWidgets import QApplication, QMainWindow, QSplitter, QTextEdit
@@ -19,6 +21,17 @@ from gem_screening.settings.models import PipelineSettings, LoggingSettings, Acq
 
 
 logger = logging.getLogger(__name__)
+LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO').upper()
+
+
+class TerminalLogHandler(logging.Handler):
+    def __init__(self, append_func: Callable[[str], None]):
+        super().__init__()
+        self.append_func = append_func
+
+    def emit(self, record: logging.LogRecord):
+        msg = self.format(record)
+        self.append_func(msg)
 
 class MainGui(QMainWindow):
     def __init__(self, pipeline_settings: PipelineSettings | None = None):
@@ -48,8 +61,13 @@ class MainGui(QMainWindow):
 
         # Left side (1/3): vertical splitter (top: controls, bottom: terminal)
         left_splitter = QSplitter(Qt.Orientation.Vertical)
-
-
+        # Top: user controls panel
+        self.controls_widget = ControlsPanel(self.pipeline_settings, autofocus_callback=self.show_autofocus_widget)
+        self.controls_widget.settings_btn.clicked.connect(self.toggle_settings)
+        self.controls_widget.mock_output_signal.connect(self.append_terminal)
+        self.main_display = MainDisplay()
+        self.settings_gui = None
+        self.settings_visible = False
 
         # Bottom: terminal/progress display
         self.terminal_widget = QTextEdit()
@@ -57,21 +75,16 @@ class MainGui(QMainWindow):
         self.terminal_widget.setPlaceholderText("Terminal/Progress Output...")
         self.terminal_widget.setStyleSheet("background-color: #23272e; color: #f8f8f2;")
 
-        # Top: user controls panel
-
-        self.controls_widget = ControlsPanel(self.pipeline_settings, autofocus_callback=self.show_autofocus_widget)
-        self.controls_widget.settings_btn.clicked.connect(self.toggle_settings)
-        self.controls_widget.mock_output_signal.connect(self.append_terminal)
-        # Right side (2/3): main area with stack for switching
-        self.main_display = MainDisplay()
-        self.settings_gui = None
-        self.settings_visible = False
-
+        terminal_handler = TerminalLogHandler(self.append_terminal)
+        terminal_handler.setLevel(LOG_LEVEL)
+        logging.getLogger().addHandler(terminal_handler)
+        
         # Add widgets to left splitter
         left_splitter.addWidget(self.controls_widget)
         left_splitter.addWidget(self.terminal_widget)
         left_splitter.setSizes([300, 200])
 
+        # Right side (2/3): main area with stack for switching
         # Add widgets to main splitter
         main_splitter.addWidget(left_splitter)
         main_splitter.addWidget(self.main_display)
@@ -82,7 +95,6 @@ class MainGui(QMainWindow):
         screen_width = screen.geometry().width() if screen is not None else 1200
         main_splitter.setSizes([screen_width // 3, screen_width * 2 // 3])
         main_splitter.setCollapsible(1, False)
-
         self.setCentralWidget(main_splitter)
 
     def show_autofocus_widget(self, image: NDArray) -> None:
@@ -95,7 +107,6 @@ class MainGui(QMainWindow):
             self.settings_visible = False
         else:
             logger.error("AutofocusWidget not available. Ensure a1_manager is installed.")
-            self.append_terminal("[ERROR] AutofocusWidget not available.")
 
     def handle_autofocus_result(self, result: str) -> None:
         """Handle the result from the autofocus GUI (continue, restart, quit)."""
@@ -118,10 +129,9 @@ class MainGui(QMainWindow):
                 self.append_terminal(f"[Autofocus] Error generating new image: {e}")
         elif result == "continue":
             self.append_terminal("[Autofocus] Continuing pipeline...")
-            # Insert next pipeline step here
         elif result == "quit":
             self.append_terminal("[Autofocus] Quitting pipeline...")
-            # Insert pipeline cleanup/stop logic here
+            QApplication.quit()
     
     def append_terminal(self, msg: str):
         self.terminal_widget.append(msg)
