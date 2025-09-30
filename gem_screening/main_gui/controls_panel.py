@@ -1,3 +1,6 @@
+from typing import Callable
+
+from numpy.typing import NDArray
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QCheckBox, QPushButton, QFileDialog
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtCore import QDateTime, Qt
@@ -5,11 +8,15 @@ from PyQt6.QtCore import QDateTime, Qt
 from gem_screening.settings.models import PipelineSettings
 
 
+from PyQt6.QtCore import pyqtSignal
+
 class ControlsPanel(QWidget):
     mock_output_signal = pyqtSignal(str)
-    def __init__(self, pipeline_settings: PipelineSettings):
+
+    def __init__(self, pipeline_settings: PipelineSettings, autofocus_callback: Callable[[NDArray], None]):
         super().__init__()
         self.pipeline_settings = pipeline_settings
+        self.autofocus_callback = autofocus_callback  # Function to call for autofocus requests
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
@@ -71,10 +78,15 @@ class ControlsPanel(QWidget):
 
     def mock_pipeline(self):
         # This function mimics launching the pipeline and can be extended to show pop-up or embedded GUI
-        msg = f"[MOCK] Pipeline would launch here with settings: {self.pipeline_settings}"
+        msg = f"[MOCK] Pipeline would launch here with settings: {self.pipeline_settings.__dict__.keys()}"
         self.mock_output_signal.emit(msg)
-        # Example: show a placeholder pop-up or call a callback to main window
-        # You can replace this with a signal or callback to integrate with the main GUI
+        # Use the callback if provided, else fallback to signal (for backward compatibility)
+        try:
+            from tifffile import imread
+            dummy_img = imread('/media/ben/Analysis/Python/Docker_mount/Test_images/nd2/Run3/c3z1t1v3_s1/Images/C1_s01_f0001_z0001.tif')
+            self.autofocus_callback(dummy_img)
+        except Exception as e:
+            self.mock_output_signal.emit(f"[MOCK] Could not emit autofocus GUI: {e}")
         
     def update_savedir(self):
         if self.pipeline_settings is not None:

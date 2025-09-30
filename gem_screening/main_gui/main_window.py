@@ -1,13 +1,24 @@
-# from PyQt6 imports
+import logging
 
+from numpy.typing import NDArray
 from PyQt6.QtWidgets import QApplication, QMainWindow, QSplitter, QTextEdit
 from PyQt6.QtCore import Qt
+
+
 from gem_screening.main_gui.controls_panel import ControlsPanel
 from gem_screening.main_gui.main_display import MainDisplay
+
+# Import AutofocusWidget for embedding
+try:
+    from a1_manager.autofocus.autofocus_gui import AutofocusWidget
+except ImportError:
+    AutofocusWidget = None
 
 from gem_screening.settings.gui.main_window import MainWindow as SettingsWindow
 from gem_screening.settings.models import PipelineSettings, LoggingSettings, AcquisitionSettings, DishSettings, MeasureSettings, ServerSettings, ControlSettings, StimSettings
 
+
+logger = logging.getLogger(__name__)
 
 class MainGui(QMainWindow):
     def __init__(self, pipeline_settings: PipelineSettings | None = None):
@@ -47,19 +58,19 @@ class MainGui(QMainWindow):
         self.terminal_widget.setStyleSheet("background-color: #23272e; color: #f8f8f2;")
 
         # Top: user controls panel
-        self.controls_widget = ControlsPanel(self.pipeline_settings)
+
+        self.controls_widget = ControlsPanel(self.pipeline_settings, autofocus_callback=self.show_autofocus_widget)
         self.controls_widget.settings_btn.clicked.connect(self.toggle_settings)
         self.controls_widget.mock_output_signal.connect(self.append_terminal)
-
-        left_splitter.addWidget(self.controls_widget)
-        left_splitter.addWidget(self.terminal_widget)
-        left_splitter.setSizes([300, 200])
-
-
         # Right side (2/3): main area with stack for switching
         self.main_display = MainDisplay()
         self.settings_gui = None
         self.settings_visible = False
+
+        # Add widgets to left splitter
+        left_splitter.addWidget(self.controls_widget)
+        left_splitter.addWidget(self.terminal_widget)
+        left_splitter.setSizes([300, 200])
 
         # Add widgets to main splitter
         main_splitter.addWidget(left_splitter)
@@ -67,14 +78,50 @@ class MainGui(QMainWindow):
         main_splitter.setStretchFactor(0, 1)
         main_splitter.setStretchFactor(1, 2)
         # Set initial splitter position: left 1/3, right 2/3
-        # This assumes the window is maximized or a reasonable size
         screen = self.screen()
         screen_width = screen.geometry().width() if screen is not None else 1200
         main_splitter.setSizes([screen_width // 3, screen_width * 2 // 3])
-        # Prevent right pane from collapsing below its minimum size
         main_splitter.setCollapsible(1, False)
 
         self.setCentralWidget(main_splitter)
+
+    def show_autofocus_widget(self, image: NDArray) -> None:
+        """Display the autofocus GUI in the right panel with the given image (numpy array)."""
+        self._last_autofocus_image = image  # Store for possible redo
+        if AutofocusWidget is not None:
+            autofocus_widget = AutofocusWidget(image)
+            autofocus_widget.result_signal.connect(self.handle_autofocus_result)
+            self.main_display.set_widget(autofocus_widget)
+            self.settings_visible = False
+        else:
+            logger.error("AutofocusWidget not available. Ensure a1_manager is installed.")
+            self.append_terminal("[ERROR] AutofocusWidget not available.")
+
+    def handle_autofocus_result(self, result: str) -> None:
+        """Handle the result from the autofocus GUI (continue, restart, quit)."""
+        self.append_terminal(f"[Autofocus Result] User selected: {result}")
+        if result == "restart":
+            self.append_terminal("[Autofocus] Restarting autofocus...")
+            # In a real pipeline, you would reacquire a new image here
+            try:
+                from tifffile import imread
+                # For demo: alternate between two images for restart
+                import random
+                img_paths = [
+                    '/media/ben/Analysis/Python/Docker_mount/Test_images/nd2/Run3/c3z1t1v3_s1/Images/C1_s01_f0001_z0001.tif',
+                    '/media/ben/Analysis/Python/Docker_mount/Test_images/nd2/Run3/c3z1t1v3_s2/Images/C1_s02_f0001_z0001.tif',
+                    '/media/ben/Analysis/Python/Docker_mount/Test_images/nd2/Run3/c3z1t1v3_s3/Images/C1_s03_f0001_z0001.tif'
+                ]
+                new_img = imread(random.choice(img_paths))
+                self.show_autofocus_widget(new_img)
+            except Exception as e:
+                self.append_terminal(f"[Autofocus] Error generating new image: {e}")
+        elif result == "continue":
+            self.append_terminal("[Autofocus] Continuing pipeline...")
+            # Insert next pipeline step here
+        elif result == "quit":
+            self.append_terminal("[Autofocus] Quitting pipeline...")
+            # Insert pipeline cleanup/stop logic here
     
     def append_terminal(self, msg: str):
         self.terminal_widget.append(msg)
