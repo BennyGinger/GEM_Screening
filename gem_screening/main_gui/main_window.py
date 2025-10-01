@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 from typing import Callable
 import os
 
@@ -11,10 +12,9 @@ from gem_screening.main_gui.controls_panel import ControlsPanel
 from gem_screening.main_gui.main_display import MainDisplay
 
 # Import AutofocusWidget for embedding
-try:
-    from a1_manager.autofocus.autofocus_gui import AutofocusWidget
-except ImportError:
-    AutofocusWidget = None
+from a1_manager.autofocus.autofocus_gui import AutofocusWidget
+from celltinder.cell_tinder import CellTinderWidget
+
 
 from gem_screening.settings.gui.main_window import MainWindow as SettingsWindow
 from gem_screening.settings.models import PipelineSettings, LoggingSettings, AcquisitionSettings, DishSettings, MeasureSettings, ServerSettings, ControlSettings, StimSettings
@@ -22,7 +22,7 @@ from gem_screening.settings.models import PipelineSettings, LoggingSettings, Acq
 
 logger = logging.getLogger(__name__)
 LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO').upper()
-
+# TODO: Check all the append_terminal calls and see if any need to be removed
 
 class TerminalLogHandler(logging.Handler):
     def __init__(self, append_func: Callable[[str], None]):
@@ -62,7 +62,8 @@ class MainGui(QMainWindow):
         # Left side (1/3): vertical splitter (top: controls, bottom: terminal)
         left_splitter = QSplitter(Qt.Orientation.Vertical)
         # Top: user controls panel
-        self.controls_widget = ControlsPanel(self.pipeline_settings, autofocus_callback=self.show_autofocus_widget)
+        self.controls_widget = ControlsPanel(self.pipeline_settings, autofocus_callback=self.show_autofocus_widget,
+        celltinder_callback=self.show_celltinder_widget)
         self.controls_widget.settings_btn.clicked.connect(self.toggle_settings)
         self.controls_widget.mock_output_signal.connect(self.append_terminal)
         self.main_display = MainDisplay()
@@ -98,40 +99,43 @@ class MainGui(QMainWindow):
         self.setCentralWidget(main_splitter)
 
     def show_autofocus_widget(self, image: NDArray) -> None:
-        """Display the autofocus GUI in the right panel with the given image (numpy array)."""
-        self._last_autofocus_image = image  # Store for possible redo
-        if AutofocusWidget is not None:
-            autofocus_widget = AutofocusWidget(image)
-            autofocus_widget.result_signal.connect(self.handle_autofocus_result)
-            self.main_display.set_widget(autofocus_widget)
-            self.settings_visible = False
-        else:
-            logger.error("AutofocusWidget not available. Ensure a1_manager is installed.")
+        """
+        Display the autofocus GUI in the right panel with the given image (numpy array).
+        """
+        autofocus_widget = AutofocusWidget(image)
+        autofocus_widget.result_signal.connect(self.handle_autofocus_result)
+        self.main_display.set_widget(autofocus_widget)
+        self.settings_visible = False
 
+    def show_celltinder_widget(self, csv_path: Path, n_frames: int, crop_size: int) -> None:
+        """
+        Display the CellTinder widget in the right panel with the given parameters.
+        """
+        celltinder_widget = CellTinderWidget(csv_path, n_frames, crop_size)
+        
+        def on_celltinder_done():
+            self.append_terminal("[Pipeline] Cell selection completed. Pipeline finished.")
+            self.controls_widget.process_finished.emit()
+        
+        celltinder_widget.finished.connect(on_celltinder_done)
+        self.main_display.set_widget(celltinder_widget)
+        self.settings_visible = False
+    
     def handle_autofocus_result(self, result: str) -> None:
         """Handle the result from the autofocus GUI (continue, restart, quit)."""
         self.append_terminal(f"[Autofocus Result] User selected: {result}")
         if result == "restart":
             self.append_terminal("[Autofocus] Restarting autofocus...")
-            # In a real pipeline, you would reacquire a new image here
-            try:
-                from tifffile import imread
-                # For demo: alternate between two images for restart
-                import random
-                img_paths = [
-                    '/media/ben/Analysis/Python/Docker_mount/Test_images/nd2/Run3/c3z1t1v3_s1/Images/C1_s01_f0001_z0001.tif',
-                    '/media/ben/Analysis/Python/Docker_mount/Test_images/nd2/Run3/c3z1t1v3_s2/Images/C1_s02_f0001_z0001.tif',
-                    '/media/ben/Analysis/Python/Docker_mount/Test_images/nd2/Run3/c3z1t1v3_s3/Images/C1_s03_f0001_z0001.tif'
-                ]
-                new_img = imread(random.choice(img_paths))
-                self.show_autofocus_widget(new_img)
-            except Exception as e:
-                self.append_terminal(f"[Autofocus] Error generating new image: {e}")
+            # Set result to restart the loop
+            self.controls_widget.set_autofocus_result("restart")
         elif result == "continue":
             self.append_terminal("[Autofocus] Continuing pipeline...")
+            # Set result to exit the loop and continue pipeline
+            self.controls_widget.set_autofocus_result("continue")
         elif result == "quit":
             self.append_terminal("[Autofocus] Quitting pipeline...")
-            QApplication.quit()
+            # Set result to exit the loop and quit
+            self.controls_widget.set_autofocus_result("quit")
     
     def append_terminal(self, msg: str):
         self.terminal_widget.append(msg)
