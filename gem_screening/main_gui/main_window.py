@@ -52,7 +52,8 @@ class MainGui(QMainWindow):
                 measure_settings=MeasureSettings(),
                 server_settings=ServerSettings(),
                 control_settings=ControlSettings(),
-                stim_settings=StimSettings(),)
+                stim_settings=StimSettings(),
+            )
 
         # Main horizontal splitter (left 1/3, right 2/3)
         main_splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -62,9 +63,12 @@ class MainGui(QMainWindow):
         # Left side (1/3): vertical splitter (top: controls, bottom: terminal)
         left_splitter = QSplitter(Qt.Orientation.Vertical)
         # Top: user controls panel
-        self.controls_widget = ControlsPanel(self.pipeline_settings, autofocus_callback=self.show_autofocus_widget,
-        celltinder_callback=self.show_celltinder_widget)
-        self.controls_widget.settings_btn.clicked.connect(self.toggle_settings)
+        self.controls_widget = ControlsPanel(
+            self.pipeline_settings,
+            autofocus_callback=self.show_autofocus_widget,
+            celltinder_callback=self.show_celltinder_widget
+        )
+        self.controls_widget.buttons.settings_btn.clicked.connect(self.toggle_settings)
         self.controls_widget.mock_output_signal.connect(self.append_terminal)
         self.main_display = MainDisplay()
         self.settings_gui = None
@@ -79,7 +83,7 @@ class MainGui(QMainWindow):
         terminal_handler = TerminalLogHandler(self.append_terminal)
         terminal_handler.setLevel(LOG_LEVEL)
         logging.getLogger().addHandler(terminal_handler)
-        
+
         # Add widgets to left splitter
         left_splitter.addWidget(self.controls_widget)
         left_splitter.addWidget(self.terminal_widget)
@@ -112,11 +116,13 @@ class MainGui(QMainWindow):
         Display the CellTinder widget in the right panel with the given parameters.
         """
         celltinder_widget = CellTinderWidget(csv_path, n_frames, crop_size)
-        
+
         def on_celltinder_done():
-            self.append_terminal("[Pipeline] Cell selection completed. Pipeline finished.")
+            self.append_terminal("[Pipeline] Cell selection completed. Resetting view.")
+            # Clear the panel (MainDisplay manages child deletion)
+            self.main_display.clear()
+            # Notify controls that processing is finished
             self.controls_widget.process_finished.emit()
-        
         celltinder_widget.finished.connect(on_celltinder_done)
         self.main_display.set_widget(celltinder_widget)
         self.settings_visible = False
