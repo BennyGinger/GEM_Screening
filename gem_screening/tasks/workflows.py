@@ -4,23 +4,21 @@ from pathlib import Path
 from a1_manager import A1Manager, StageCoord
 from cp_server import ComposeManager
 
-from gem_screening.tasks.workflows_utils import scan_round1, scan_round2, cell_selection, illuminate
+from gem_screening.tasks.image_capture import image_fovs
+from gem_screening.tasks.workflows_utils import scan_round1, scan_round2, after_scan
 from gem_screening.utils.client.cleanup import cleanup_stale
 from gem_screening.utils.client.mask_registration import register_masks_batch_client
+from gem_screening.utils.pipeline_constants import MEASURE_LABEL
+from gem_screening.utils.prompts import prompt_to_continue, ADD_LIGAND_PROMPT
 from gem_screening.tasks.rescue_assessment import assess_rescue
 from gem_screening.utils.prompt_gui import PipelineQuit
 from gem_screening.settings.models import PipelineSettings
-from gem_screening.well_data.well_classes import Well
+from gem_screening.well_data.well_classes import Plate
 
 
 logger = logging.getLogger(__name__)
 
-def run_complete_flow(dish_grid: dict[str, dict[int, StageCoord]],
-                  a1_manager: A1Manager,
-                  run_dir: Path,
-                  run_id: str,
-                  settings: PipelineSettings,
-                  ) -> None:
+def run_complete_flow(dish_grid: dict[str, dict[int, StageCoord]], a1_manager: A1Manager, run_dir: Path, run_id: str, settings: PipelineSettings,) -> None:
     """
     Run the complete pipeline workflow from the beginning for the given dish grid.
     This is the fresh start entry point that performs the full workflow:
@@ -42,32 +40,23 @@ def run_complete_flow(dish_grid: dict[str, dict[int, StageCoord]],
         cleanup_stale()  
         
         # Start imaging
-        for well, well_grid in dish_grid.items():
+
+        plate = scan_round1(a1_manager, settings, run_dir, run_id, dish_grid)
+
+        try:
+            prompt_to_continue(ADD_LIGAND_PROMPT)
             
-            logger.info(f"Processing well: {well}")
-            
-            # Create a well object
-            well_obj = Well(run_dir=run_dir,
-                            run_id=run_id,
-                            well_grid=well_grid,
-                            well=well)
-            
-            # Run flow
-            scan_round1(a1_manager, settings, well_obj)
-            
-            try:
-                scan_round2(a1_manager, settings, well_obj)
-            except PipelineQuit:
+        except PipelineQuit:
                 logger.info("User chose to quit the pipeline during imaging/stimulation.")
                 raise
             
-            _after_scan(a1_manager, settings, well_obj)
-            
-            logger.info(f"Completed processing for well: {well}")
+        scan_round2(a1_manager, settings, plate)  
+        
+        after_scan(a1_manager, settings, plate)
+        
+        logger.info("Completed processing for all wells.")
 
-def run_rescue_flow(a1_manager: A1Manager,
-                    settings: PipelineSettings,
-                    well_objs: list[Well],
+def run_rescue_flow(a1_manager: A1Manager, settings: PipelineSettings, plate_obj: Plate,
                     ) -> None:
     """
     Run the rescue pipeline workflow for the given list of well objects.
@@ -76,33 +65,31 @@ def run_rescue_flow(a1_manager: A1Manager,
         # Clean up the redis server
         cleanup_stale()
         
-        # Loop through each well object and process the images
-        for well_obj in well_objs:
-            # Determine the rescue plan for the well
-            rescue_plan = assess_rescue(well_obj)
-            logger.debug(f"Rescue plan for well {well_obj.well_id}: {rescue_plan}")
-            
-            match rescue_plan["case"]:
-                case "round1":
-                    # Register masks (R1 only in this case)
-                    register_masks_batch_client(well_obj.well_id,
-                                                rescue_plan["masks_to_register"],
-                                                rescue_plan["total_fovs"])
-                    # Start from round 1 imaging
-                    _from_scan(True, a1_manager, settings, well_obj, rescue_plan["fovs_to_process"])
-                case "round2":
-                    # Register all masks (R1 + R2, server will sort them)
-                    register_masks_batch_client(well_obj.well_id,
-                                                rescue_plan["masks_to_register"],
-                                                rescue_plan["total_fovs"],
-                                                settings.server_settings.track_stitch_threshold)
-                    # Start from round 2 imaging
-                    _from_scan(False, a1_manager, settings, well_obj, rescue_plan["fovs_to_process"])
-                case "celltinder":
-                    _after_scan(a1_manager, settings, well_obj)
+        # Determine the rescue plan for the well
+        rescue_plan = assess_rescue(plate_obj)
+        logger.debug(f"Rescue plan for well {plate_obj.wells}: {rescue_plan}")
+        
+        match rescue_plan["case"]:
+            case "round1":
+                # Register masks (R1 only in this case)
+                register_masks_batch_client(run_id=plate_obj.run_id,
+                                            mask_paths=rescue_plan["masks_to_register"],
+                                            total_fovs=rescue_plan["total_fovs"])
+                # Start from round 1 imaging
+                _from_scan(True, a1_manager, settings, plate_obj, rescue_plan["fovs_to_process"])
+            case "round2":
+                # Register all masks (R1 + R2, server will sort them)
+                register_masks_batch_client(run_id=plate_obj.run_id,
+                                            mask_paths=rescue_plan["masks_to_register"],
+                                            total_fovs=rescue_plan["total_fovs"],
+                                            track_stitch_threshold=settings.server_settings.track_stitch_threshold)
+                # Start from round 2 imaging
+                _from_scan(False, a1_manager, settings, plate_obj, rescue_plan["fovs_to_process"])
+            case "celltinder":
+                after_scan(a1_manager, settings, plate_obj)
             
 
-def _from_scan(do_round1: bool, a1_manager: A1Manager, settings: PipelineSettings, well_obj: Well, fov_ids: list[str] | None = None) -> None:
+def _from_scan(do_round1: bool, a1_manager: A1Manager, settings: PipelineSettings, plate_obj: Plate, fov_ids: list[str] | None = None) -> None:
     """ 
     Run the pipeline workflow starting from round 1 imaging for a specific well object.
     This function is used to start the workflow from round 1 imaging, allowing for imaging continuation of specific fields of view (FOVs) if needed.
@@ -114,33 +101,19 @@ def _from_scan(do_round1: bool, a1_manager: A1Manager, settings: PipelineSetting
     """
     # Run flow from round 1
     if do_round1:
-        scan_round1(a1_manager, settings, well_obj, fov_ids)
+        for well_obj in plate_obj.well_list:
+            image_fovs(well_obj, a1_manager, settings, f"{MEASURE_LABEL}_1", fov_ids)
         fov_ids = None  # After round 1, image all FOVs in round 2
     try:
-        scan_round2(a1_manager, settings, well_obj, fov_ids)
+        scan_round2(a1_manager, settings, plate_obj, fov_ids)
     except PipelineQuit:
         logger.info("User chose to quit the pipeline during imaging/stimulation.")
         raise
-    _after_scan(a1_manager, settings, well_obj)
+    after_scan(a1_manager, settings, plate_obj)
     
-    logger.info(f"Completed processing for well: {well_obj.well_id}")
-        
-def _after_scan(a1_manager: A1Manager, settings: PipelineSettings, well_obj: Well) -> None:
-    """ 
-    Run the analysis and illumination workflow after scanning is complete.
-    This function handles cell selection and illumination for wells where both 
-    round 1 and round 2 imaging have been completed.
-    
-    Args:
-        a1_manager (A1Manager): The A1Manager instance to control the microscope hardware.
-        settings (PipelineSettings): The settings for the pipeline, including acquisition settings, dish settings, and save directory.
-        well_obj (Well): The well object to process.
-    """
-    cell_selection(settings, well_obj)
+    logger.info(f"Completed processing for well: {plate_obj.wells}")
 
-    illuminate(a1_manager, settings, well_obj)
-    
-    logger.info(f"Completed processing for well: {well_obj.well_id}")
+
 
         
 

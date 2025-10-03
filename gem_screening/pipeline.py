@@ -5,7 +5,7 @@ from a1_manager import launch_dish_workflow
 from a1_manager.autofocus.af_utils import QuitAutofocus
 
 from gem_screening.tasks.initialization import initialize_pipeline, initialize_rescue_pipeline
-from gem_screening.tasks.rescue_utils import load_saved_well_obj, load_saved_settings
+from gem_screening.tasks.rescue_utils import load_saved_plate, load_saved_settings
 from gem_screening.utils.prompts import prompt_to_continue, FOCUS_PROMPT
 from gem_screening.utils.prompt_gui import PipelineQuit
 from gem_screening.settings.models import PipelineSettings
@@ -57,21 +57,21 @@ def rescue_pipeline(run_dir: Path, settings: PipelineSettings | None = None, wel
         well_selection (str | list[str] | None): Specific wells to rescue. If None, all wells will be rescued.
     """
     # Load the well_obj
-    wells_lst = load_saved_well_obj(run_dir, well_selection)
+    plate = load_saved_plate(run_dir, well_selection)
 
     # Load settings if not provided
     if settings is None:
         settings = load_saved_settings(run_dir)
     
     # Get run_id from the first well object (all wells should have the same run_id)
-    run_id = wells_lst[0].run_id
+    run_id = plate.well_list[0].run_id
     
     # Initialize rescue pipeline with existing run_dir and run_id
     a1_manager, logger = initialize_rescue_pipeline(settings, run_dir, run_id)
 
     from gem_screening.tasks.workflows import run_rescue_flow
     try:
-        run_rescue_flow(a1_manager, settings, wells_lst)
+        run_rescue_flow(a1_manager, settings, plate)
     except PipelineQuit:
         logger.info("User chose to quit during pipeline execution. Stopping pipeline.")
         return

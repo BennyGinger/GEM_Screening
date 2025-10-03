@@ -73,12 +73,12 @@ class RegisterMasksBatchPayload:
     This model is used to register multiple masks to Redis and optionally trigger tracking.
     
     Attributes:
-        well_id (str): Unique identifier for the processing well.
+        run_id (str): Unique identifier for the processing run.
         mask_paths (list[str]): List of paths to mask files (container paths).
         total_fovs (int): Total number of FOVs (used for pending counter initialization).
         track_stitch_threshold (float): Threshold for stitching masks during tracking. Default to 0.75.
     """
-    well_id: str
+    run_id: str
     mask_paths: list[str]
     total_fovs: int
     track_stitch_threshold: float = 0.75

@@ -1,4 +1,3 @@
-from functools import partial
 import logging
 from pathlib import Path
 
@@ -15,21 +14,17 @@ from gem_screening.well_data.well_classes import FieldOfView
 logger = logging.getLogger(__name__)
 
 
-def extract_measure_intensities(fovs: list[FieldOfView], 
-                     true_cell_threshold: int,
-                     csv_path: Path,
-                     *, 
-                     executor: str = 'thread', 
-                     max_workers: int | None = None) -> None:
+def extract_measure_intensities(fovs_list: list[FieldOfView], true_cell_threshold: int, csv_path: Path, *, executor: str = 'thread', max_workers: int | None = None) -> None:
     """
     Extract the region properties for all FOVs in parallel, convert it to a pandas `DataFrame` and save it to a CSV file.
     Args:
-        fovs (list[FieldOfView]): List of FieldOfView objects to process.
+        fovs_list (list[FieldOfView]): List of all positive FOVs to process across all wells.
         true_cell_threshold (int): Threshold for true cell detection. Below this intensity value, cells are considered noise and set to 0 in the output.
         csv_path (Path): Path to save the resulting CSV file.
         executor (str, optional): Type of executor to use for parallel processing ('thread' or 'process'). Defaults to 'thread'.
         max_workers (int | None): Maximum number of workers to use for parallel processing. Defaults to None, which lets the executor decide based on available resources.
     """
+    
     if csv_path.exists():
         logger.info(f"CSV file {csv_path} already exists. Skipping intensity extraction.")
         return
@@ -40,7 +35,7 @@ def extract_measure_intensities(fovs: list[FieldOfView],
     # Run the worker in parallel over all FOVs
     region_dfs = parallel_progress_bar(
         worker,
-        fovs,
+        fovs_list,
         executor=executor,
         max_workers=max_workers,
         desc="Extracting region properties")
@@ -49,13 +44,9 @@ def extract_measure_intensities(fovs: list[FieldOfView],
     df = pd.concat([df for df in region_dfs if isinstance(df, pd.DataFrame)], ignore_index=True)
     
     df.to_csv(csv_path, index=False)
-    logger.info(f"Extracted region properties for {len(fovs)} FOVs and saved to {csv_path}.")
+    logger.info(f"Extracted region properties for {len(fovs_list)} FOVs and saved to {csv_path}.")
 
-def update_control_intensities(fovs: list[FieldOfView],
-                               csv_path: Path,
-                               *,
-                               executor: str = 'thread',
-                               max_workers: int | None = None) -> None:
+def update_control_intensities(fovs: list[FieldOfView], csv_path: Path, *, executor: str = 'thread', max_workers: int | None = None) -> None:
     """
     Update the region properties DataFrame with control images for all FOVs in parallel.
     Args:
@@ -68,8 +59,7 @@ def update_control_intensities(fovs: list[FieldOfView],
     df_ori = pd.read_csv(csv_path)
     tasks: list[tuple[FieldOfView, pd.DataFrame]] = [
         (fov, df_ori[df_ori[FOV_ID] == fov.fov_id].copy())
-        for fov in fovs
-    ]
+        for fov in fovs]
     
     # Typed worker that accepts a (FieldOfView, DataFrame) tuple and forwards to _update_regionprops
     # run_parallel expects the function to return the same type as its input, so return a (fov, DataFrame) tuple.
@@ -84,8 +74,7 @@ def update_control_intensities(fovs: list[FieldOfView],
         tasks,
         executor=executor,
         max_workers=max_workers,
-        desc="Updating region properties with control images",
-    )
+        desc="Updating region properties with control images",)
     
     # Extract the DataFrames from the results and concatenate them
     sub_dfs = [res[1] for res in results if isinstance(res, tuple) and isinstance(res[1], pd.DataFrame)]

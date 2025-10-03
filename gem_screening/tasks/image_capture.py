@@ -144,7 +144,7 @@ def _take_image_fov(fov_obj: FieldOfView, input_preset: PresetMeasure | PresetCo
     Snap an image at the specified FOV using the given A1Manager and preset settings.
     """
     # Position stage
-    a1_manager.nikon.set_stage_position(fov_obj.fov_coord)
+    a1_manager.set_stage_position(fov_obj.fov_coord)
     
     # Change oc settings
     a1_manager.oc_settings(**input_preset.model_dump())

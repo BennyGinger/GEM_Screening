@@ -5,10 +5,10 @@ from pathlib import Path
 from typing import Dict, Any
 
 from gem_screening.utils.pipeline_constants import MASK_LABEL
-from gem_screening.well_data.well_classes import Well
+from gem_screening.well_data.well_classes import Plate
 
 
-def assess_rescue(well_obj: Well) -> Dict[str, Any]:
+def assess_rescue(plate_obj: Plate) -> Dict[str, Any]:
     """
     Simplified rescue assessment with 3 main cases.
     
@@ -22,10 +22,10 @@ def assess_rescue(well_obj: Well) -> Dict[str, Any]:
         - fovs_to_process: list of FOV IDs that need processing
         - total_fovs: total number of FOVs for processing (adjusted for edge cases)
     """
-    expected_fov_ids = {fov.fov_id for fov in well_obj.positive_fovs}
+    expected_fov_ids = {fov.fov_id for fov in plate_obj.positive_fovs}
     
     # Case 3: Check for CSV file (celltinder or illuminate case)
-    if well_obj.csv_path.exists():
+    if plate_obj.csv_path.exists():
         return {
             "case": "celltinder",
             "masks_to_register": [],
@@ -38,25 +38,24 @@ def assess_rescue(well_obj: Well) -> Dict[str, Any]:
         """Extract FOV ID from mask filename like 'A1P1_mask_1.tif' -> 'A1P1'"""
         return file_path.stem.split(f'_{MASK_LABEL}_')[0]
 
-    def get_tracked_masks(mask_dir: Path) -> set[str]:
+    def get_tracked_masks(mask_dirs: list[Path]) -> set[str]:
         """Get set of already tracked mask file names from tracked_files.txt.
         We compare by file name only to avoid host/container path mismatches."""
-        track_log_file = mask_dir / "tracked_files.txt"
-        if not track_log_file.exists():
-            return set()
-        
-        # Read tracked files from log and compare by basename only
-        with open(track_log_file, 'r') as f:
-            tracked_names = {Path(line.strip()).name for line in f if line.strip()}
-        
+        tracked_names = set()
+        for mask_dir in mask_dirs:
+            track_log_file = mask_dir / "tracked_files.txt"
+            if not track_log_file.exists():
+                continue
+            with open(track_log_file, 'r') as f:
+                tracked_names.update(Path(line.strip()).name for line in f if line.strip())
         return tracked_names
     
     # Check for R1 mask files first - this determines our starting point
-    r1_mask_files = list(well_obj.mask_dir.glob(f"*_{MASK_LABEL}_1.tif"))
+    r1_mask_files = list(plate_obj.mask_dir_glob(f"*_{MASK_LABEL}_1.tif"))
     r1_mask_fovs = {extract_fov_id(f) for f in r1_mask_files}
     
     # Find R2 mask files
-    r2_mask_files = list(well_obj.mask_dir.glob(f"*_{MASK_LABEL}_2.tif"))
+    r2_mask_files = list(plate_obj.mask_dir_glob(f"*_{MASK_LABEL}_2.tif"))
 
     # Case 1: No R2 masks found - start from round1 (regardless of R1 status)
     if not r2_mask_files:
@@ -75,7 +74,7 @@ def assess_rescue(well_obj: Well) -> Dict[str, Any]:
     r2_mask_fovs = {extract_fov_id(f) for f in r2_mask_files}
     
     # Get already tracked masks to subtract from registration lists
-    tracked_mask_names = get_tracked_masks(well_obj.mask_dir)
+    tracked_mask_names = get_tracked_masks(plate_obj.mask_dirs)
     
     # Check if R1 is complete
     r1_complete = r1_mask_fovs.issuperset(expected_fov_ids)

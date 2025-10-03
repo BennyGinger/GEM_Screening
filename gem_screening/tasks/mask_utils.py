@@ -3,13 +3,13 @@ import logging
 
 from gem_screening.utils.identifiers import parse_image_filename
 from gem_screening.utils.pipeline_constants import MASK_LABEL
-from gem_screening.well_data.well_classes import Well
+from gem_screening.well_data.well_classes import Well, Plate
 
 
 # Set up logging
 logger = logging.getLogger(__name__)
 
-def assign_masks_to_fovs(well_obj: Well) -> None:
+def assign_masks_to_fovs(plate_obj: Plate) -> None:
     """
     Assign masks to each FieldOfView based on the mask files in the specified directory. 
     Each mask file should be in the format '<FOVID>_mask_[1-9].tif'. Any other format will be ignored.
@@ -18,7 +18,7 @@ def assign_masks_to_fovs(well_obj: Well) -> None:
         well_obj (Well): The Well object containing the positive FieldOfViews and the directory where masks are stored.
     """
     # Map all the fov by fov_id
-    fov_map = {fov.fov_id: fov for fov in well_obj.positive_fovs}
+    fov_map = {fov.fov_id: fov for fov in plate_obj.positive_fovs}
     
     # Early exit if no FOVs
     if not fov_map:
@@ -35,7 +35,7 @@ def assign_masks_to_fovs(well_obj: Well) -> None:
     fov_masks: dict[str, list[Path]] = {fov_id: [] for fov_id in fov_map.keys()}
     
     # Batch process mask files
-    mask_files = list(well_obj.mask_dir.glob("*.tif"))
+    mask_files = plate_obj.mask_dir_glob("*.tif")
     logger.info(f"Processing {len(mask_files)} mask files for {len(fov_map)} FOVs")
     
     # Scan the mask directory and group masks by FOV identifier
@@ -80,5 +80,5 @@ def assign_masks_to_fovs(well_obj: Well) -> None:
             total_masks_assigned += len(paths)
     
     # Save the updated well object
-    well_obj.to_json()
-    logger.info(f"Assigned {total_masks_assigned} masks to {len(fov_masks)} FOVs in well {well_obj.well}.")
+    plate_obj.to_json()
+    logger.info(f"Assigned {total_masks_assigned} masks to {len(fov_masks)} FOVs in well(s) {plate_obj.wells}.")

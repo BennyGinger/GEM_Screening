@@ -179,7 +179,7 @@ class Well:
         self.img_dir = self._setup_dir(self.well_dir, IMG_FOLDER)
         self.mask_dir = self._setup_dir(self.well_dir, MASK_FOLDER)
         # Setup the CSV file path for cell data.
-        self.csv_path = self.well_dir.joinpath(f"{self.well}_{DF_FILENAME}")
+        self.csv_path = self.run_dir.joinpath(f"{DF_FILENAME}")
         
         # Unpack the field of view objects
         self._fov_obj_list = self._unpack_fov()
@@ -281,3 +281,79 @@ class Well:
         return obj
 
 
+@dataclass(slots=True)
+class Plate:
+    """
+    Class to store the information of a plate. Contains the paths to the different wells and a list of well objects.
+    Attributes:
+        well_list (list[Well]): List of well objects contained in the plate.
+    """
+    well_list: list[Well] = field(default_factory=list)
+    
+    @property
+    def positive_fovs(self) -> list[FieldOfView]:
+        """
+        Get all positive FOVs across all wells in the plate.
+        Returns:
+            list[FieldOfView]: List of all positive FieldOfView objects in the plate.
+        """
+        pos_fovs = []
+        for well in self.well_list:
+            pos_fovs.extend(well.positive_fovs)
+        return pos_fovs
+
+    @property
+    def csv_path(self) -> Path:
+        """
+        Get the CSV file path for the plate.
+        Returns:
+            Path: The CSV file path for the plate.
+        """
+        return self.well_list[0].csv_path
+
+    @property
+    def wells(self) -> list[str]:
+        """
+        Get a list of all well names in the plate.
+        Returns:
+            list[str]: List of all well names in the plate.
+        """
+        return [w.well for w in self.well_list]
+
+    @property
+    def mask_dirs(self) -> list[Path]:
+        """
+        Get a list of all mask directories across all wells in the plate.
+        Returns:
+            list[Path]: List of all mask directory paths in the plate.
+        """
+        return [w.mask_dir for w in self.well_list]
+    
+    @property
+    def run_id(self) -> str:
+        """
+        Get the run ID from the first well in the plate.
+        Returns:
+            str: The run ID of the plate.
+        """
+        return self.well_list[0].run_id
+    
+    def mask_dir_glob(self, pattern: str) -> list[Path]:
+        """
+        Get a list of all mask files across all wells in the plate.
+        Returns:
+            list[Path]: List of all mask file paths in the plate.
+        """
+        mask_files = []
+        for well in self.well_list:
+            mask_files.extend(well.mask_dir.glob(pattern))
+        return mask_files
+
+    def to_json(self) -> None:
+        """
+        Save the wells object to a JSON file.
+        """
+        for well in self.well_list:
+            well.to_json()
+    
+        

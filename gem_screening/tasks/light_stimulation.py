@@ -15,7 +15,7 @@ from gem_screening.utils.pipeline_constants import PROCESS, FOV_ID, MASK_LABEL, 
 from gem_screening.tasks.image_capture import image_fovs
 from gem_screening.utils.filesystem import imwrite_atomic
 from gem_screening.settings.models import PipelineSettings, PresetStim
-from gem_screening.well_data.well_classes import FieldOfView, Well
+from gem_screening.well_data.well_classes import FieldOfView, Well, Plate
 
 
 # a TypeVar for “any numpy scalar type”
@@ -25,7 +25,7 @@ T = TypeVar("T", bound=np.generic)
 logger = logging.getLogger(__name__)
 
 
-def create_stim_masks(well_obj: Well, 
+def create_stim_masks(plate_obj: Plate, 
                       erosion_factor: int,
                       *,
                       executor: str = 'thread',
@@ -39,11 +39,11 @@ def create_stim_masks(well_obj: Well,
         max_workers (int, optional): Maximum number of workers for parallel processing. Default is None, which uses the default number of workers.
     """
     
-    data = pd.read_csv(well_obj.csv_path)
-    logger.info(f"Loaded cell data from {well_obj.csv_path} with {len(data)} rows.")
+    data = pd.read_csv(plate_obj.csv_path)
+    logger.info(f"Loaded cell data from {plate_obj.csv_path} with {len(data)} rows.")
     
     # build a list of (fov, subdf) tasks
-    tasks = [(fov, data[data[FOV_ID] == fov.fov_id]) for fov in well_obj.positive_fovs]
+    tasks = [(fov, data[data[FOV_ID] == fov.fov_id]) for fov in plate_obj.positive_fovs]
     
     def process_task(args):
         fov, subdf = args
@@ -57,10 +57,10 @@ def create_stim_masks(well_obj: Well,
         max_workers=max_workers,)
     
     # Save the well object after processing
-    logger.info(f"All stimulation masks created for well {well_obj.well}.")
-    well_obj.to_json()
+    logger.info(f"All stimulation masks created for well {plate_obj.wells}.")
+    plate_obj.to_json()
 
-def illuminate_fovs(well_obj: Well, a1_manager: A1Manager, settings: PipelineSettings) -> None:
+def illuminate_fovs(plate_obj: Plate, a1_manager: A1Manager, settings: PipelineSettings) -> None:
     """
     Illuminate all cells in the FOVs of a well object, and capture control images before and after illumination.
     Args:
@@ -72,20 +72,22 @@ def illuminate_fovs(well_obj: Well, a1_manager: A1Manager, settings: PipelineSet
     
     # control loop before illumination
     if do_control:
-        image_fovs(well_obj, a1_manager, settings, f"{CONTROL_LABEL}_1")
+        for well_obj in plate_obj.well_list:
+            image_fovs(well_obj, a1_manager, settings, f"{CONTROL_LABEL}_1")
         logger.info("Captured control images before illumination.")
     
     # Illuminate all FOVs
-    _illuminate_cells(well_obj, a1_manager, settings.stim_settings.preset)
+    _illuminate_cells(plate_obj.positive_fovs, a1_manager, settings.stim_settings.preset)
     logger.info("Illuminated all cells in the FOVs.")
     
     # control loop after illumination
     if do_control:
-        image_fovs(well_obj, a1_manager, settings, f"{CONTROL_LABEL}_2")
+        for well_obj in plate_obj.well_list:
+            image_fovs(well_obj, a1_manager, settings, f"{CONTROL_LABEL}_2")
         logger.info("Captured control images after illumination.")
 
 ################## Helper Functions ##################
-def _illuminate_cells(well_obj: Well, a1_manager: A1Manager, stim_preset: PresetStim) -> None:
+def _illuminate_cells(fovs: list[FieldOfView], a1_manager: A1Manager, stim_preset: PresetStim) -> None:
     """
     Illuminate all cells in the FOVs.
     Args:
@@ -98,12 +100,12 @@ def _illuminate_cells(well_obj: Well, a1_manager: A1Manager, stim_preset: Preset
     preset = stim_preset.model_dump()
     duration_sec: float = preset.pop('exposure_sec', 10.)
     a1_manager.oc_settings(**preset)
-    
-    for fov in progress_bar(well_obj.positive_fovs,
+
+    for fov in progress_bar(fovs,
                             desc="Illuminating cells",
-                           total=len(well_obj.positive_fovs)):
+                           total=len(fovs)):
         # Move to the FOV
-        a1_manager.nikon.set_stage_position(fov.fov_coord)
+        a1_manager.set_stage_position(fov.fov_coord)
         
         # Illuminate the cells
         dmd_masks = fov.load_images(STIM_LABEL)
