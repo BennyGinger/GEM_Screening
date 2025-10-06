@@ -1,7 +1,11 @@
 from dataclasses import asdict
-from typing import Union
+from typing import Any, Union, TypeVar, cast
 import logging
 from pathlib import Path
+
+from numpy.typing import NDArray
+import numpy as np
+from cp_server.tasks_server.utils.serialization_utils import custom_encoder, custom_decoder
 
 from gem_screening.utils.client import FASTAPI_URL
 from gem_screening.utils.client.models import BackgroundPayload, ProcessPayload, build_payload
@@ -12,6 +16,7 @@ from gem_screening.settings.models import ServerSettings
 
 logger = logging.getLogger(__name__)
 
+T = TypeVar("T", bound=np.generic)
 
 def bg_removal_client(server_settings: ServerSettings, img_path: Path | list[Path]) -> None:
     """
@@ -54,6 +59,27 @@ def full_process_client(server_settings: ServerSettings, img_path: Path | list[P
                                 server_settings=server_settings,
                                 bg_only=False)
     _send_to_process(full_payload)
+
+def optimise_segmentation(img: NDArray[T], cellpose_settings: dict[str, Any]) -> NDArray[T]:
+    """
+    Send an ndarray to the FastAPI server for segmentation and receive the mask.
+    Args:
+        img (np.ndarray): The image to segment.
+        cellpose_settings (dict): Settings for segmentation.
+    Returns:
+        np.ndarray: The segmented mask.
+    """
+    payload = {
+        "array": custom_encoder(img),
+        "cellpose_settings": cellpose_settings}
+    
+    url = f"{FASTAPI_URL}/segment_ndarray"
+    resp = make_request_with_retry(url, payload, "segment_ndarray")
+    resp.raise_for_status()
+    result = resp.json()
+    # result["array"] is a dict (already parsed); custom_decoder can accept dict
+    mask = cast(NDArray[T], custom_decoder(result["array"]))
+    return mask
 
 def _send_to_process_bg_sub(payload: BackgroundPayload) -> None:
     """
