@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pandas as pd
 from a1_manager import A1Manager, StageCoord
+from progress_bar import setup_progress_monitor as progress_bar
 
 from gem_screening.tasks.data_intensity import extract_measure_intensities, update_control_intensities
 from gem_screening.tasks.image_capture import image_fovs
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 def scan_round1(a1_manager: A1Manager, settings: PipelineSettings, run_dir: Path, run_id: str, dish_grid: dict[str, dict[int, StageCoord]], fov_ids: list[str] | None = None) -> Plate:
     """
-    Scan the well object for round 1 imaging.
+    Scan all the wells in the dish grid for round 1 imaging.
     
     Args:
         a1_manager (A1Manager): The A1Manager instance to control the microscope hardware.
@@ -29,24 +30,22 @@ def scan_round1(a1_manager: A1Manager, settings: PipelineSettings, run_dir: Path
     """
     plate = Plate()
     # Create a well object
-    for well, well_grid in dish_grid.items():
-            
-        logger.info(f"Processing well: {well}")
-
+    for well, well_grid in progress_bar(dish_grid.items(), desc="Scanning wells round 1", total=len(dish_grid)):
         # Create a well object and add to plate
         well_obj = Well(run_dir=run_dir,
                         run_id=run_id,
                         well_grid=well_grid,
                         well=well)
         plate.well_list.append(well_obj)
-
+        logger.debug(f"Created well object for well {well} with {len(well_grid)} FOVs")
+        
         # Run flow
         image_fovs(well_obj, a1_manager, settings, f"{MEASURE_LABEL}_1", fov_ids)
     return plate
 
 def scan_round2(a1_manager: A1Manager, settings: PipelineSettings, plate_obj: Plate, fov_ids: list[str] | None = None) -> None:
     """
-    Scan the well object for round 2 imaging.
+    Scan the wells for round 2 imaging.
     
     Args:
         a1_manager (A1Manager): The A1Manager instance to control the microscope hardware.
@@ -54,8 +53,8 @@ def scan_round2(a1_manager: A1Manager, settings: PipelineSettings, plate_obj: Pl
         well_obj (Well): The well object to process.
         fov_ids (list[str] | None): Optional list of specific FOV IDs to image. If None, all positive FOVs will be imaged.
     """
-    
-    for well_obj in plate_obj.well_list:
+
+    for well_obj in progress_bar(plate_obj.well_list, desc="Scanning wells round 2", total=len(plate_obj.well_list)):
         # Run flow
         image_fovs(well_obj, a1_manager, settings, f"{MEASURE_LABEL}_2", fov_ids)
 

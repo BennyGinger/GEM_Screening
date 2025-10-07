@@ -39,8 +39,10 @@ def run_complete_flow(dish_grid: dict[str, dict[int, StageCoord]], a1_manager: A
         # Clean up the redis server
         cleanup_stale()  
         
+        # Optimize Segmentation settings
+        
+        
         # Start imaging
-
         plate = scan_round1(a1_manager, settings, run_dir, run_id, dish_grid)
 
         try:

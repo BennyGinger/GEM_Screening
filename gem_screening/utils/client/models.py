@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from gem_screening.utils.pipeline_constants import BG_SETS, CP_SETS
+from gem_screening.utils.pipeline_constants import BG_SETS
 from gem_screening.settings.models import ServerSettings
 
 def _transform_path_for_container(img_path: Path) -> str:
@@ -100,13 +100,12 @@ def build_payload(img_path: str | list[str],
     # build the background settings payload
     bg_sets = BG_SETS.copy()
     settings_dict = server_settings.model_dump()
+    override = {k: v for k, v in settings_dict.items() if k in bg_sets}
+    bg_sets.update(override)
     if bg_only:
-        override = {k: v for k, v in settings_dict.items() if k in bg_sets}
-        bg_sets.update(override)
         return BackgroundPayload(img_path=img_path, **bg_sets)
 
     # Otherwise, build the full processing payload
-    cp_sets = CP_SETS.copy()
     track_stitch_threshold = settings_dict.pop("track_stitch_threshold", 0.75)
     # Required parameters — raise if missing
     well_id = settings_dict.pop("well_id", None)
@@ -129,11 +128,6 @@ def build_payload(img_path: str | list[str],
     except Exception as e:
         raise ValueError(f"total_fovs must be an integer, got {total_fovs!r}") from e
 
-    # Extract the different settings parameters
-    for sets in (bg_sets, cp_sets):
-        overrides = {k: v for k, v in settings_dict.items() if k in sets}
-        sets.update(overrides)
-
     # Build the payload
     return ProcessPayload(
         img_path=img_path,
@@ -141,7 +135,7 @@ def build_payload(img_path: str | list[str],
         well_id=str(well_id),
         total_fovs=total_fovs,  # int ensured above
         track_stitch_threshold=track_stitch_threshold,
-        cellpose_settings=cp_sets,
+        cellpose_settings=server_settings.to_backend_dict(),
         **bg_sets,
     )
                           

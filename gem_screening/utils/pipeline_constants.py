@@ -1,4 +1,7 @@
 # Define constants for the image labels
+from typing import Any
+
+
 MEASURE_LABEL = 'measure'
 CONTROL_LABEL = 'control'
 REFSEG_LABEL = 'refseg'
@@ -36,17 +39,5 @@ PROCESS = 'process'
 
 # Define constants for cellpose settings
 # FIXME: Move these constant to the cp_server module
-BG_SETS = {"sigma": 0.0,
+BG_SETS: dict[str, Any] = {"sigma": 0.0,
            "size": 7,}
-
-CP_SETS = {"do_denoise": True,
-               "model_type": "cyto2",
-               "restore_type": "denoise_cyto2",
-               "gpu": True,
-               "channels": None,
-               "diameter": 60,
-               "flow_threshold": 0.4,
-               "cellprob_threshold": 0.0,
-               "z_axis": None,
-               "do_3D": False,
-               "stitch_threshold_3D": 0,}

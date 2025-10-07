@@ -1,10 +1,11 @@
 from dataclasses import asdict
-from typing import Any, Union, TypeVar, cast
+from typing import Any, TypeVar, cast
 import logging
 from pathlib import Path
 
 from numpy.typing import NDArray
 import numpy as np
+import requests
 from cp_server.tasks_server.utils.serialization_utils import custom_encoder, custom_decoder
 
 from gem_screening.utils.client import FASTAPI_URL
@@ -81,6 +82,18 @@ def optimise_segmentation(img: NDArray[T], cellpose_settings: dict[str, Any]) ->
     mask = cast(NDArray[T], custom_decoder(result["array"]))
     return mask
 
+def cellpose_metadata_client() -> dict[str, Any]:
+    """
+    Retrieve Cellpose metadata from the server, including available model names and version.
+    Returns:
+        dict: Metadata containing 'model_names' and 'version'.
+    """
+    url = f"{FASTAPI_URL}/cellpose_metadata"
+    resp = requests.get(url, timeout=10)
+    resp.raise_for_status()
+    result = resp.json()
+    return result
+
 def _send_to_process_bg_sub(payload: BackgroundPayload) -> None:
     """
     Call the /process_bg_sub endpoint to launch Celery jobs for background subtraction (single or batch).
@@ -101,7 +114,7 @@ def _send_to_process_bg_sub(payload: BackgroundPayload) -> None:
         result = resp.text
     logger.debug(f"Enqueued background subtraction task(s): {result} for {payload.img_path}.")
 
-def _send_to_process(payload: Union[ProcessPayload, BackgroundPayload]) -> None:
+def _send_to_process(payload: ProcessPayload | BackgroundPayload) -> None:
     """
     Call the /process endpoint to launch Celery jobs (single or batch). Images will be background subtracted, denoised (if needed), segmented, and tracked (using IoU).
     Args:

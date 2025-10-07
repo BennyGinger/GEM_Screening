@@ -2,9 +2,11 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from functools import partial
-from typing import Callable
+from typing import Callable, TypeVar
 
-from a1_manager import A1Manager
+import numpy as np
+from a1_manager import A1Manager, StageCoord
+from numpy.typing import NDArray
 from progress_bar import setup_progress_monitor as progress_bar
 
 from gem_screening.utils.client.service import bg_removal_client, full_process_client
@@ -17,7 +19,7 @@ from gem_screening.well_data.well_classes import FieldOfView, Well
 
 # Set up logging
 logger = logging.getLogger(__name__)
-
+T = TypeVar("T", bound=np.generic)
 BATCH_SIZE = 16
 
 def image_fovs(well_obj: Well, a1_manager: A1Manager, settings: PipelineSettings, imaging_loop: str, fov_ids: list[str] | None = None) -> None:
@@ -53,6 +55,18 @@ def image_fovs(well_obj: Well, a1_manager: A1Manager, settings: PipelineSettings
     
     # Save the well object
     well_obj.to_json()
+
+def snap_image(coord: StageCoord, input_preset: PresetMeasure | PresetControl | PresetRefseg, a1_manager: A1Manager) -> NDArray:
+    # Move to position
+    a1_manager.set_stage_position(coord)
+    
+    # Set oc settings
+    a1_manager.oc_settings(**input_preset.model_dump())
+    a1_manager.load_dmd_mask('fullON')
+    
+    # Take image
+    img = a1_manager.snap_image()
+    return img
 
 def _create_imaging_steps(settings: PipelineSettings, imaging_loop: str, server_settings: ServerSettings) -> list[tuple[str, PresetMeasure | PresetControl | PresetRefseg, Callable]]:
     """
@@ -100,14 +114,15 @@ def _process_fovs(imaging_loop: str, fovs_to_process: list[FieldOfView], a1_mana
     Process the FOVs in batches, taking images and applying post-processing functions.
     """
     # Define the snap function
-    snap = partial(_take_image_fov, a1_manager=a1_manager)
+    snap = partial(_process_single_fov, a1_manager=a1_manager)
     
-    # Initialize batches for each step and total FOV count
+    # Initialize process
     batches = [[] for _ in steps]
     total_fovs = len(fovs_to_process)
+    well = fovs_to_process[0].well  # Assume all FOVs belong to the same well
     
     # Process each FOV
-    for fov in progress_bar(fovs_to_process, desc=f"Imaging {imaging_loop}", total=total_fovs):
+    for fov in progress_bar(fovs_to_process, desc=f"Imaging {imaging_loop} of well {well}", total=total_fovs):
         for i, (loop_name, preset, post_fn) in enumerate(steps):
             img_path = snap(fov, input_preset=preset, imaging_loop=loop_name)
             batches[i].append(img_path)
@@ -139,24 +154,23 @@ def _get_fovs_from_ids(well_obj: Well, fov_ids: list[str]) -> list[FieldOfView]:
     
     return result_fovs
 
-def _take_image_fov(fov_obj: FieldOfView, input_preset: PresetMeasure | PresetControl, imaging_loop: str, a1_manager: A1Manager) -> Path:
+def _process_single_fov(fov_obj: FieldOfView, input_preset: PresetMeasure | PresetControl | PresetRefseg, imaging_loop: str, a1_manager: A1Manager) -> Path:
     """
     Snap an image at the specified FOV using the given A1Manager and preset settings.
     """
-    # Position stage
-    a1_manager.set_stage_position(fov_obj.fov_coord)
-    
-    # Change oc settings
-    a1_manager.oc_settings(**input_preset.model_dump())
-    a1_manager.load_dmd_mask('fullON')
-    
-    # Take image and do background correction
-    img = a1_manager.snap_image()
+    # Snap image
+    img = snap_image(fov_obj.fov_coord, input_preset, a1_manager)
     
     # Save image
+    return _save_image(fov_obj, imaging_loop, img)
+
+def _save_image(fov_obj: FieldOfView, imaging_loop: str, img: NDArray) -> Path:
+    """
+    Save the image to the appropriate directory and return the file path.
+    """
     img_path = fov_obj.register_img_file(imaging_loop)
     imwrite_atomic(img_path, img.astype('uint16'))
     logger.debug(f"Image saved at {img_path}")
-    
-    # Build the payload for the image processing request
     return img_path
+
+

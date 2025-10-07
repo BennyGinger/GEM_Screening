@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any
 from pydantic import BaseModel, Field
 import json
 
@@ -145,7 +146,7 @@ class StimSettings(BaseModel):
     erosion_factor: int = 3
     preset: PresetStim = PresetStim()
 
-class ServerSettings(BaseModel):
+class ServerSettings(BaseModel, extra='allow'):
     """
     Pydantic model for Settings for the server used in the imaging process.
     Attributes:
@@ -185,11 +186,22 @@ class ServerSettings(BaseModel):
     do_3D: bool = False
     stitch_threshold_3D: float = 0.0
     track_stitch_threshold: float = 0.75
+    extra_settings: dict[str, Any] = Field(default_factory=dict)
     
     ## Set by pipeline ##
     well_id: str = ''
     dst_folder: str = ''
     total_fovs: int = 0
+    
+    def to_backend_dict(self) -> dict[str, Any]:
+        """
+        Convert the ServerSettings object to a dictionary suitable for backend processing.
+        Returns:
+            dict[str, Any]: Dictionary representation of the ServerSettings object with keys formatted for backend use.
+        """
+        backend_dict = self.model_dump(exclude={'server_timeout_sec', 'well_id', 'dst_folder', 'total_fovs', 'extra_settings'})
+        backend_dict.update(self.extra_settings)
+        return backend_dict
     
 class PipelineSettings(BaseModel):
     """
