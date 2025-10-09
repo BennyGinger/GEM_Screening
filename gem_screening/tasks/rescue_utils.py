@@ -17,24 +17,21 @@ def load_saved_plate(run_dir: Path, well_selection: str | list[str] | None = Non
     Returns:
         Plate: The loaded Plate object containing all well objects.
     """
-
-    plate = Plate()
-    # Load the well_obj
-    wells_paths = list(run_dir.rglob(WELL_OBJ_PATTERN))
-    if not wells_paths:
-        raise FileNotFoundError(f"No well objects found in {run_dir}")
-    wells_list = [Well.from_json(p) for p in wells_paths]
+    # Load the plate object
+    config_dir = run_dir.joinpath(CONFIG_FOLDER)
+    if not config_dir.exists():
+        raise FileNotFoundError(f"No configuration folder found at {config_dir}")
+    plate_path = _find_obj_json_file(config_dir)
+    if plate_path is None:
+        raise FileNotFoundError(f"No *_obj.json file found in {config_dir}")
+    plate = Plate.from_json(plate_path)
     
     # Filter wells if a selection is provided
     if well_selection is not None:
         if isinstance(well_selection, str):
             well_selection = [well_selection]
-        filtered_wells = [w for w in wells_list if w.well in well_selection]
-        if not filtered_wells:
-            raise ValueError(f"No wells match the selection {well_selection} in {run_dir}")
-        plate.well_list.extend(filtered_wells)
-    else:
-        plate.well_list.extend(wells_list)
+
+        plate.select_wells(well_selection)
 
     return plate
 
@@ -50,3 +47,12 @@ def load_saved_settings(run_dir: Path) -> PipelineSettings:
     if not settings_path.exists():
         raise FileNotFoundError(f"No pipeline settings found at {settings_path}")
     return PipelineSettings.from_json(settings_path)
+
+def _find_obj_json_file(run_dir: Path) -> Path | None:
+    """
+    Find the first file in run_dir that ends with 'obj.json'.
+    Returns the Path if found, else None.
+    """
+    for file in run_dir.glob("*_obj.json"):
+        return file
+    return None

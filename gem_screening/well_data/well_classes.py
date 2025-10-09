@@ -12,7 +12,7 @@ from numpy.typing import NDArray
 import tifffile as tiff
 
 from gem_screening.utils.identifiers import parse_image_filename, parse_category_instance
-from gem_screening.utils.pipeline_constants import CONFIG_FOLDER, DEFAULT_CATEGORIES, DF_FILENAME, IMG_CAT, IMG_FOLDER, MASK_FOLDER, WELL_FOLDER, WELL_OBJ_FILENAME
+from gem_screening.utils.pipeline_constants import CONFIG_FOLDER, DEFAULT_CATEGORIES, DF_FILENAME, IMG_CAT, IMG_FOLDER, MASK_FOLDER, WELL_FOLDER, OBJ_FILENAME
 from gem_screening.utils.serializers import CustomJSONEncoder, custom_json_decoder
 
 
@@ -143,61 +143,38 @@ class Well:
     """
     Class to store the information of a well. Contains the paths to the different images and masks folders, as well as the list of field of views objects, which contains the coordinates of all field of views in the well, as well as the paths of all the image/mask files associated with each field of view.
     Attributes:
-        run_dir (Path): Path to the main run directory.
-        run_id (str): Unique identifier for the run, composed of the hostname and an uuid.
+        well_dir (Path): Path to the well directory.
         well_grid (dict[int, StageCoord]): Dictionary mapping field of view instance numbers to their coordinates.
         well (str): Well name.
-        well_dir (Path): Path to the well directory.
-        config_dir (Path): Path to the configuration directory.
+        run_id (str): Run ID of the experiment.
         img_dir (Path): Path to the images directory.
         mask_dir (Path): Path to the masks directory.
         csv_path (Path): Path to the CSV file containing cell data.
         positive_fovs (list[FieldOfView]): List of field of views that contain positive cells.
     """
-    run_dir: Path
-    run_id: str
+    well_dir: Path
     well_grid: dict[int, StageCoord]
     well: str
+    run_id: str
     # Filled after __post_init__
-    well_dir: Path = field(init=False)
-    config_dir: Path = field(init=False)
     img_dir: Path = field(init=False)
     mask_dir: Path = field(init=False)
     csv_path: Path = field(init=False)
+    _process_well: bool = field(default=True)
     _fov_obj_list: list[FieldOfView] = field(init=False)
     
     def __post_init__(self)-> None:
         """
         Initialize the well object. This method is called after the dataclass is created to set up the directories and field of view objects.
         """
-        # Setup the main well directory
-        self.well_dir = self._setup_dir(self.run_dir, WELL_FOLDER)
         self._reset_folder()
-        # Setup the configuration directory.
-        self.config_dir = self._setup_dir(self.well_dir, CONFIG_FOLDER)
         # Setup fresh images and masks directories.
-        self.img_dir = self._setup_dir(self.well_dir, IMG_FOLDER)
-        self.mask_dir = self._setup_dir(self.well_dir, MASK_FOLDER)
-        # Setup the CSV file path for cell data.
-        self.csv_path = self.run_dir.joinpath(f"{DF_FILENAME}")
+        self.img_dir = _setup_dir(self.well_dir, IMG_FOLDER)
+        self.mask_dir = _setup_dir(self.well_dir, MASK_FOLDER)
         
         # Unpack the field of view objects
         self._fov_obj_list = self._unpack_fov()
-            
-        # Save the well object to a JSON file
-        self.to_json()
-
-    def _setup_dir(self, root_path: Path, new_dir_name: str) -> Path:
-        """
-        Setup new directory.
-        Args:
-            root_path (Path): Path to the root directory where the well folder will be created.
-            new_dir_name (str): Name of the new directory to be created.
-        """
-        new_dir = root_path.joinpath(f"{self.well}_{new_dir_name}")
-        new_dir.mkdir(parents=True, exist_ok=True)
-        return new_dir
-        
+         
     def _reset_folder(self)-> None:
         """
         Remove all folders and files in the well folder.
@@ -205,8 +182,7 @@ class Well:
         to_remove = {
             f"{self.well}_{CONFIG_FOLDER}",
             f"{self.well}_{IMG_FOLDER}",
-            f"{self.well}_{MASK_FOLDER}",
-            f"{self.well}_{DF_FILENAME}",}
+            f"{self.well}_{MASK_FOLDER}",}
         
         for child in self.well_dir.iterdir():
             # Skip if not the right folder or csv file
@@ -231,10 +207,6 @@ class Well:
         return [fov for fov in self._fov_obj_list if fov.contain_positive_cells]
     
     @property
-    def well_obj_path(self)-> Path:
-        return self.config_dir.joinpath(f"{self.well}_{WELL_OBJ_FILENAME}")
-    
-    @property
     def well_id(self)-> str:
         """
         Construct the well ID from the run ID and well name.
@@ -243,32 +215,21 @@ class Well:
         """
         return f"{self.run_id}_{self.well}"
     
-    def to_json(self)-> None:
+    @property
+    def process_well(self) -> bool:
         """
-        Save the well object to a JSON file.
+        Returns True if the well should be processed (user flag True and positive FOVs). False otherwise.
         """
-        with open(self.well_obj_path, 'w') as fp:
-            json.dump(self, fp, cls=CustomJSONEncoder, indent=2)
+        return self._process_well and bool(self.positive_fovs)
     
-    @classmethod
-    def from_json(cls: type[Well], file_path: Path)-> Well:
+    @process_well.setter
+    def process_well(self, value: bool) -> None:
         """
-        Load a well object from a JSON file.
+        Set the user flag to process the well.
         Args:
-            file_path (Path): Path to the JSON file.
-        Returns:
-            Well: The loaded well object.
+            value (bool): True to process the well, False otherwise.
         """
-        # Read the raw dist
-        with open(file_path, 'r') as f:
-            data: dict = json.loads(f.read(), object_hook=custom_json_decoder)
-        # Re-convert the well_grid keys to int
-        data["well_grid"] = {int(k): v for k,v in data["well_grid"].items()}
-        
-        # Bypass the __init__ and __post_init__ methods
-        obj = object.__new__(cls)
-        obj.__dict__.update(data)
-        return obj
+        self._process_well = value
     
     @classmethod
     def from_dict(cls: type[Well], data: dict[str, Any]) -> Well:
@@ -276,6 +237,10 @@ class Well:
         Reconstruct a Well from its serialized dict, replaying the same
         initialization logic so that all folders, CSV path, and FOVs are set up.
         """
+        # Convert well_grid keys from string to int (JSON serialization converts int keys to strings)
+        if "well_grid" in data:
+            data["well_grid"] = {int(k): v for k, v in data["well_grid"].items()}
+        
         obj = object.__new__(cls)
         obj.__dict__.update(data)
         return obj
@@ -286,9 +251,45 @@ class Plate:
     """
     Class to store the information of a plate. Contains the paths to the different wells and a list of well objects.
     Attributes:
+        run_dir (Path): Path to the run directory.
+        run_id (str): Run ID of the experiment.
+        dish_grid (dict[str, dict[int, StageCoord]]): Dictionary mapping well names to their field of view grids.
+        csv_path (Path): Path to the CSV file containing cell data
         well_list (list[Well]): List of well objects contained in the plate.
     """
-    well_list: list[Well] = field(default_factory=list)
+    run_dir: Path
+    run_id: str
+    dish_grid: dict[str, dict[int, StageCoord]]
+    csv_path: Path = field(init=False)
+    _well_list: list[Well] = field(default_factory=list)
+    
+    def __post_init__(self) -> None:
+        """
+        Initialize the plate object. This method is called after the dataclass is created to set up the CSV path.
+        """
+        # build the well_list
+        for well, well_grid in self.dish_grid.items():
+            well_obj = Well(well_dir=_setup_dir(self.run_dir, WELL_FOLDER),
+                            well_grid=well_grid,
+                            well=well,
+                            run_id=self.run_id)
+            self.well_list.append(well_obj)
+
+        # Set up the CSV path
+        self.csv_path = self.run_dir.joinpath(f"{DF_FILENAME}")
+        if self.csv_path.exists():
+            self.csv_path.unlink()
+        
+        self.to_json()
+    
+    @property
+    def well_list(self) -> list[Well]:
+        """
+        Get all wells that contain positive FOVs.
+        Returns:
+            list[Well]: List of all Well objects that contain positive FOVs.
+        """
+        return [w for w in self._well_list if w.process_well]
     
     @property
     def positive_fovs(self) -> list[FieldOfView]:
@@ -301,15 +302,6 @@ class Plate:
         for well in self.well_list:
             pos_fovs.extend(well.positive_fovs)
         return pos_fovs
-
-    @property
-    def csv_path(self) -> Path:
-        """
-        Get the CSV file path for the plate.
-        Returns:
-            Path: The CSV file path for the plate.
-        """
-        return self.well_list[0].csv_path
 
     @property
     def wells(self) -> list[str]:
@@ -330,13 +322,17 @@ class Plate:
         return [w.mask_dir for w in self.well_list]
     
     @property
-    def run_id(self) -> str:
+    def plate_obj_path(self)-> Path:
+        return self.run_dir.joinpath(CONFIG_FOLDER, f"{self.run_id}_{OBJ_FILENAME}")
+    
+    def select_wells(self, well_names: list[str]) -> None:
         """
-        Get the run ID from the first well in the plate.
-        Returns:
-            str: The run ID of the plate.
+        Select wells to process based on a list of well names. Only wells with names in the provided list will be marked for processing.
+        Args:
+            well_names (list[str]): List of well names to select for processing.
         """
-        return self.well_list[0].run_id
+        for well in self._well_list:
+            well.process_well = True if well.well in well_names else False
     
     def mask_dir_glob(self, pattern: str) -> list[Path]:
         """
@@ -353,7 +349,67 @@ class Plate:
         """
         Save the wells object to a JSON file.
         """
-        for well in self.well_list:
-            well.to_json()
-    
+        if self.plate_obj_path.exists():
+            with open(self.plate_obj_path, 'r') as fp:
+                old_data = json.load(fp, object_hook=custom_json_decoder)
+            old_plate = Plate.from_dict(old_data)
+            self._extend_wells(old_plate.well_list)
+            self.dish_grid.update(old_plate.dish_grid)
         
+        # Save the plate object to a JSON file
+        with open(self.plate_obj_path, 'w') as fp:
+            json.dump(self, fp, cls=CustomJSONEncoder, indent=2)
+    
+    @classmethod
+    def from_dict(cls: type[Plate], data: dict[str, Any]) -> Plate:
+        """
+        Reconstruct a Plate from its serialized dict, replaying the same
+        initialization logic so that all folders, CSV path, and FOVs are set up.
+        """
+        obj = object.__new__(cls)
+        obj.__dict__.update(data)
+        # Optionally restore computed fields
+        if not hasattr(obj, "csv_path") or obj.csv_path is None:
+            obj.csv_path = obj.run_dir.joinpath(f"{DF_FILENAME}")
+        return obj
+    
+    @classmethod
+    def from_json(cls: type["Plate"], file_path: Path) -> "Plate":
+        """
+        Load a Plate object from a JSON file.
+        """
+        with open(file_path, 'r') as f:
+            data = json.load(f, object_hook=custom_json_decoder)
+        return data if isinstance(data, Plate) else cls.from_dict(data)
+    
+    def _extend_wells(self, new_wells: list[Well]) -> None:
+        """
+        Extend the well_list with only new wells (no duplicates by well_id).
+        """
+        existing_ids = {w.well_id for w in self.well_list}
+        for well in new_wells:
+            if well.well_id not in existing_ids:
+                self.well_list.append(well)
+                existing_ids.add(well.well_id)
+        self.well_list.sort(key=lambda w: w.well)  # sort by well name
+    
+    def __len__(self) -> int:
+        """
+        Return the number of wells in the plate.
+        """
+        return len(self.well_list)
+        
+def _setup_dir(root_path: Path, new_dir_name: str, prefix: str | None = None) -> Path:
+    """
+    Setup new directory.
+    Args:
+        root_path (Path): Path to the root directory where the well folder will be created.
+        new_dir_name (str): Name of the new directory to be created.
+        prefix (str | None): Optional prefix to add before the new directory name. For example, the well name.
+    Returns:
+        Path: The path to the newly created directory.
+    """
+    fprefix = f"{prefix}_" if prefix is not None else ""
+    new_dir = root_path.joinpath(f"{fprefix}{new_dir_name}")
+    new_dir.mkdir(parents=True, exist_ok=True)
+    return new_dir

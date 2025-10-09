@@ -46,7 +46,11 @@ def custom_json_decoder(dct: dict[str, Any]) -> Any:
         if key.startswith("__") and key.endswith("__"):
             type_name = key.strip("__")
             data = dct[key]
-
+            # 0) Plate
+            if type_name == "Plate":
+                from gem_screening.well_data.well_classes import Plate
+                return Plate.from_dict(data)
+            
             # 1) Well  
             if type_name == "Well":
                 from gem_screening.well_data.well_classes import Well

@@ -103,10 +103,18 @@ def _create_regionprops(fov: FieldOfView, true_cell_threshold: int) -> pd.DataFr
                                                'label': CELL_LABEL})
     df = pd.merge(df0, dfn, on=CELL_LABEL, how='inner')
     
+    # Add image and mask paths as columns
+    img_paths = sorted(fov.tiff_paths[MEASURE_LABEL])
+    mask_paths = sorted(fov.tiff_paths[MASK_LABEL])
+    df["img0_path"] = str(img_paths[0]) if len(img_paths) > 0 else None
+    df["imgn_path"] = str(img_paths[1]) if len(img_paths) > 1 else None
+    df["mask0_path"] = str(mask_paths[0]) if len(mask_paths) > 0 else None
+    df["maskn_path"] = str(mask_paths[1]) if len(mask_paths) > 1 else None
+    
     # Apply the true cell threshold to the mean intensity, else set to 0
     df[AFTER_STIM] = df[AFTER_STIM].where(df[AFTER_STIM] >= true_cell_threshold, 0)
     # Add the FOV ID and coordinates
-    fx, fy =fov.fov_coord.xy
+    fx, fy = fov.fov_coord.xy
     df[FOV_Y] = fy
     df[FOV_X] = fx
     # Generate the cell ID

@@ -3,7 +3,7 @@ import logging
 
 from gem_screening.utils.identifiers import parse_image_filename
 from gem_screening.utils.pipeline_constants import MASK_LABEL
-from gem_screening.well_data.well_classes import Well, Plate
+from gem_screening.well_data.well_classes import FieldOfView, Plate
 
 
 # Set up logging
@@ -38,7 +38,41 @@ def assign_masks_to_fovs(plate_obj: Plate) -> None:
     mask_files = plate_obj.mask_dir_glob("*.tif")
     logger.info(f"Processing {len(mask_files)} mask files for {len(fov_map)} FOVs")
     
-    # Scan the mask directory and group masks by FOV identifier
+    # Group masks by FOV identifier
+    _group_masks_by_fov(fov_masks, mask_files)
+    
+    # Check that each key contains the same number of masks
+    _log_mask_counts(fov_masks)
+    
+    # Batch assign masks to the corresponding FOVs
+    total_masks_assigned = _assign_masks_to_fovs(fov_map, fov_masks)
+    
+    # Save the updated plate object
+    plate_obj.to_json()
+    logger.info(f"Assigned {total_masks_assigned} masks to {len(fov_masks)} FOVs in wells {plate_obj.wells}.")
+
+def _log_mask_counts(fov_masks: dict[str, list[Path]]) -> None:
+    counts = {fid: len(paths) for fid, paths in fov_masks.items()}
+    unique_counts = set(counts.values())
+    if len(unique_counts) == 1:
+        logger.info(f"All FOVs have the same number of masks: {unique_counts.pop()}")
+    else:
+        for n in sorted(unique_counts):
+            bad = [fid for fid, count in counts.items() if count == n]
+            logger.warning(f"FOVs {bad} have {n} masks, which is different from the others.")
+
+def _assign_masks_to_fovs(fov_map: dict[str, FieldOfView], fov_masks: dict[str, list[Path]]) -> int:
+    total_masks_assigned = 0
+    for fov_id, paths in fov_masks.items():
+        fov = fov_map.get(fov_id)
+        if fov is not None and paths:
+            # Batch process paths for this FOV
+            for path in paths:
+                fov.register_existing_tiff(path)
+            total_masks_assigned += len(paths)
+    return total_masks_assigned
+
+def _group_masks_by_fov(fov_masks: dict[str, list[Path]], mask_files: list[Path]) -> None:
     for mask_path in mask_files:
         try:
             # Extract the FOV identifier from the mask file name
@@ -58,27 +92,3 @@ def assign_masks_to_fovs(plate_obj: Plate) -> None:
         except Exception as e:
             logger.warning(f"Error processing mask file {mask_path}: {e}. Skipping.")
             continue
-    
-    # Check that each key contains the same number of masks
-    counts = {fid: len(paths) for fid, paths in fov_masks.items()}
-    unique_counts = set(counts.values())
-    if len(unique_counts) == 1:
-        logger.info(f"All FOVs have the same number of masks: {unique_counts.pop()}")
-    else:
-        for n in sorted(unique_counts):
-            bad = [fid for fid, count in counts.items() if count == n]
-            logger.warning(f"FOVs {bad} have {n} masks, which is different from the others.")
-    
-    # Batch assign masks to the corresponding FOVs
-    total_masks_assigned = 0
-    for fov_id, paths in fov_masks.items():
-        fov = fov_map.get(fov_id)
-        if fov is not None and paths:
-            # Batch process paths for this FOV
-            for path in paths:
-                fov.register_existing_tiff(path)
-            total_masks_assigned += len(paths)
-    
-    # Save the updated well object
-    plate_obj.to_json()
-    logger.info(f"Assigned {total_masks_assigned} masks to {len(fov_masks)} FOVs in well(s) {plate_obj.wells}.")

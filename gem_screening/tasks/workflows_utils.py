@@ -13,12 +13,12 @@ from gem_screening.utils.client.progress import wait_for_completion
 from gem_screening.utils.external import run_celltinder
 from gem_screening.utils.pipeline_constants import MEASURE_LABEL
 from gem_screening.settings.models import PipelineSettings
-from gem_screening.well_data.well_classes import Well, Plate
+from gem_screening.well_data.well_classes import Plate
 
 
 logger = logging.getLogger(__name__)
 
-def scan_round1(a1_manager: A1Manager, settings: PipelineSettings, run_dir: Path, run_id: str, dish_grid: dict[str, dict[int, StageCoord]], fov_ids: list[str] | None = None) -> Plate:
+def scan_round1(a1_manager: A1Manager, settings: PipelineSettings, plate_obj: Plate, fov_ids: list[str] | None = None) -> None:
     """
     Scan all the wells in the dish grid for round 1 imaging.
     
@@ -28,20 +28,11 @@ def scan_round1(a1_manager: A1Manager, settings: PipelineSettings, run_dir: Path
         well_obj (Well): The well object to process.
         fov_ids (list[str] | None): Optional list of specific FOV IDs to image. If None, all positive FOVs will be imaged.
     """
-    plate = Plate()
-    # Create a well object
-    for well, well_grid in progress_bar(dish_grid.items(), desc="Scanning wells round 1", total=len(dish_grid)):
-        # Create a well object and add to plate
-        well_obj = Well(run_dir=run_dir,
-                        run_id=run_id,
-                        well_grid=well_grid,
-                        well=well)
-        plate.well_list.append(well_obj)
-        logger.debug(f"Created well object for well {well} with {len(well_grid)} FOVs")
-        
+    for well_obj in progress_bar(plate_obj.well_list, desc="Scanning wells round 1", total=len(plate_obj.well_list)):
         # Run flow
         image_fovs(well_obj, a1_manager, settings, f"{MEASURE_LABEL}_1", fov_ids)
-    return plate
+    # save plate state
+    plate_obj.to_json()
 
 def scan_round2(a1_manager: A1Manager, settings: PipelineSettings, plate_obj: Plate, fov_ids: list[str] | None = None) -> None:
     """
@@ -57,6 +48,8 @@ def scan_round2(a1_manager: A1Manager, settings: PipelineSettings, plate_obj: Pl
     for well_obj in progress_bar(plate_obj.well_list, desc="Scanning wells round 2", total=len(plate_obj.well_list)):
         # Run flow
         image_fovs(well_obj, a1_manager, settings, f"{MEASURE_LABEL}_2", fov_ids)
+    # save plate state
+    plate_obj.to_json()
 
     # Wait for all images to be processed
     well_ids = [w.well_id for w in plate_obj.well_list]

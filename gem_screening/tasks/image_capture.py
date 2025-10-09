@@ -52,9 +52,6 @@ def image_fovs(well_obj: Well, a1_manager: A1Manager, settings: PipelineSettings
 
     # Process the FOVs as batches
     _process_fovs(imaging_loop, fovs_to_process, a1_manager, steps)
-    
-    # Save the well object
-    well_obj.to_json()
 
 def snap_image(coord: StageCoord, input_preset: PresetMeasure | PresetControl | PresetRefseg, a1_manager: A1Manager) -> NDArray:
     # Move to position

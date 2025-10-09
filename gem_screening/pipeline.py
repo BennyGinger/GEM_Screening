@@ -63,11 +63,8 @@ def rescue_pipeline(run_dir: Path, settings: PipelineSettings | None = None, wel
     if settings is None:
         settings = load_saved_settings(run_dir)
     
-    # Get run_id from the first well object (all wells should have the same run_id)
-    run_id = plate.well_list[0].run_id
-    
     # Initialize rescue pipeline with existing run_dir and run_id
-    a1_manager, logger = initialize_rescue_pipeline(settings, run_dir, run_id)
+    a1_manager, logger = initialize_rescue_pipeline(settings, run_dir, plate.run_id)
 
     from gem_screening.tasks.workflows import run_rescue_flow
     try:

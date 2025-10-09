@@ -42,8 +42,11 @@ def run_complete_flow(dish_grid: dict[str, dict[int, StageCoord]], a1_manager: A
         # Optimize Segmentation settings
         
         
+        # Initialize plate object
+        plate = Plate(run_dir=run_dir, run_id=run_id, dish_grid=dish_grid)
+        
         # Start imaging
-        plate = scan_round1(a1_manager, settings, run_dir, run_id, dish_grid)
+        scan_round1(a1_manager, settings, plate)
 
         try:
             prompt_to_continue(ADD_LIGAND_PROMPT)
@@ -58,8 +61,7 @@ def run_complete_flow(dish_grid: dict[str, dict[int, StageCoord]], a1_manager: A
         
         logger.info("Completed processing for all wells.")
 
-def run_rescue_flow(a1_manager: A1Manager, settings: PipelineSettings, plate_obj: Plate,
-                    ) -> None:
+def run_rescue_flow(a1_manager: A1Manager, settings: PipelineSettings, plate_obj: Plate,) -> None:
     """
     Run the rescue pipeline workflow for the given list of well objects.
     """
