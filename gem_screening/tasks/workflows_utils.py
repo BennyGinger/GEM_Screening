@@ -1,8 +1,7 @@
 import logging
-from pathlib import Path
 
 import pandas as pd
-from a1_manager import A1Manager, StageCoord
+from a1_manager import A1Manager
 from progress_bar import setup_progress_monitor as progress_bar
 
 from gem_screening.tasks.data_intensity import extract_measure_intensities, update_control_intensities

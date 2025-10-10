@@ -12,7 +12,8 @@ from gem_screening.utils.pipeline_constants import CONFIG_FOLDER
 from gem_screening.settings.models import PipelineSettings, MeasureSettings
 
 
-PRE_STAGE_POS = {'35mm':{'ZDrive':2500,'PFSOffset':8200}}
+PRE_STAGE_POS = {'35mm':{'ZDrive':2500,'PFSOffset':8200},
+                 '96well':{'ZDrive':5500,'PFSOffset':4700}}
 
 
 def initialize_pipeline(settings: PipelineSettings) -> tuple[A1Manager, Path, logging.Logger, str]:
@@ -116,6 +117,9 @@ def _set_predefined_position(a1_manager: A1Manager, settings: PipelineSettings) 
     """
     Move the stage to a predefined safe position based on the dish type. 
     """
+    af_method = settings.dish_settings.af_method
+    if af_method == 'Manual':
+        return
     dish_name = settings.dish_settings.dish_name
     zdrive = 'ZDrive'
     pfs = 'PFSOffset'

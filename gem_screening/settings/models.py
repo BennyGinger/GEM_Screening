@@ -33,11 +33,11 @@ class DishSettings(BaseModel):
     Attributes:
         dish_name (str, optional): Name of the dish, e.g., '35mm', 'ibidi-8well', or '96well'. Defaults to '35mm'.
         well_selection (str | list[str], optional): Well name or list of wells to image, e.g., ['A1', 'A2']. If 'all', will image all possible wells. Defaults to ['A1'].
-        method (str, optional): Method for autofocus, e.g., 'sq_grad' or 'Manual'. Defaults to 'sq_grad'.
-        overwrite_autofocus (bool, optional): If True, will overwrite the autofocus settings. Defaults to False.
+        af_method (str, optional): Method for autofocus, e.g., 'sq_grad' or 'Manual'. Defaults to 'sq_grad'.
         dmd_window_only (bool, optional): If True, will only use the DMD window for measurement. Defaults to True.
         numb_field_view (int, optional): Number of field views to image. If None, will run the whole well.
         overlap_percent (float, optional): Overlap percentage for field views. If None, will use optimal overlap for the dish.
+        overwrite_autofocus (bool, optional): If True, will overwrite the autofocus settings. Defaults to False.
         overwrite_calib (bool, optional): If True, will overwrite the calibration file. Defaults to False.
         af_savedir (Path, optional): Directory to save the autofocus images. Only applicable for the square gradient method. Defaults to None.
         n_corners_in (int, optional): Number of corners of each fov that should be contained within a round well at the edges. Defaults to 4.

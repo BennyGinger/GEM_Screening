@@ -1,12 +1,13 @@
 from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
+import itertools
 import json
 from pathlib import Path
 import shutil
 from typing import Any
 
-from a1_manager import StageCoord
+from a1_manager import StageCoord, load_config_file, WellCircleCoord, WellSquareCoord
 import numpy as np
 from numpy.typing import NDArray
 import tifffile as tiff
@@ -14,6 +15,8 @@ import tifffile as tiff
 from gem_screening.utils.identifiers import parse_image_filename, parse_category_instance
 from gem_screening.utils.pipeline_constants import CONFIG_FOLDER, DEFAULT_CATEGORIES, DF_FILENAME, IMG_CAT, IMG_FOLDER, MASK_FOLDER, WELL_FOLDER, OBJ_FILENAME
 from gem_screening.utils.serializers import CustomJSONEncoder, custom_json_decoder
+
+
 
 
 @dataclass(slots=True)
@@ -132,7 +135,8 @@ class FieldOfView:
             FieldOfView: The created FieldOfView object.
         """
         obj = object.__new__(cls)
-        obj.__dict__.update(data)
+        for key, value in data.items():
+            setattr(obj, key, value)
         # restore defaultdict behavior, allowing to automatically create lists for new keys
         obj.tiff_paths = defaultdict(list, obj.tiff_paths)
         return obj
@@ -149,7 +153,6 @@ class Well:
         run_id (str): Run ID of the experiment.
         img_dir (Path): Path to the images directory.
         mask_dir (Path): Path to the masks directory.
-        csv_path (Path): Path to the CSV file containing cell data.
         positive_fovs (list[FieldOfView]): List of field of views that contain positive cells.
     """
     well_dir: Path
@@ -159,7 +162,6 @@ class Well:
     # Filled after __post_init__
     img_dir: Path = field(init=False)
     mask_dir: Path = field(init=False)
-    csv_path: Path = field(init=False)
     _process_well: bool = field(default=True)
     _fov_obj_list: list[FieldOfView] = field(init=False)
     
@@ -169,9 +171,9 @@ class Well:
         """
         self._reset_folder()
         # Setup fresh images and masks directories.
-        self.img_dir = _setup_dir(self.well_dir, IMG_FOLDER)
-        self.mask_dir = _setup_dir(self.well_dir, MASK_FOLDER)
-        
+        self.img_dir = _setup_dir(self.well_dir, IMG_FOLDER, self.well)
+        self.mask_dir = _setup_dir(self.well_dir, MASK_FOLDER, self.well)
+
         # Unpack the field of view objects
         self._fov_obj_list = self._unpack_fov()
          
@@ -242,7 +244,8 @@ class Well:
             data["well_grid"] = {int(k): v for k, v in data["well_grid"].items()}
         
         obj = object.__new__(cls)
-        obj.__dict__.update(data)
+        for key, value in data.items():
+            setattr(obj, key, value)
         return obj
 
 
@@ -267,13 +270,15 @@ class Plate:
         """
         Initialize the plate object. This method is called after the dataclass is created to set up the CSV path.
         """
+        # Create a Well folder
+        well_dir = _setup_dir(self.run_dir, WELL_FOLDER)
         # build the well_list
         for well, well_grid in self.dish_grid.items():
-            well_obj = Well(well_dir=_setup_dir(self.run_dir, WELL_FOLDER),
+            well_obj = Well(well_dir=_setup_dir(well_dir, well),
                             well_grid=well_grid,
                             well=well,
                             run_id=self.run_id)
-            self.well_list.append(well_obj)
+            self._well_list.append(well_obj)
 
         # Set up the CSV path
         self.csv_path = self.run_dir.joinpath(f"{DF_FILENAME}")
@@ -285,11 +290,116 @@ class Plate:
     @property
     def well_list(self) -> list[Well]:
         """
-        Get all wells that contain positive FOVs.
+        Get all wells that contain positive FOVs, sorted in snake order for minimal stage movement.
         Returns:
-            list[Well]: List of all Well objects that contain positive FOVs.
+            list[Well]: List of all Well objects that contain positive FOVs, sorted by stage position.
         """
-        return [w for w in self._well_list if w.process_well]
+        wells = [w for w in self._well_list if w.process_well]
+        return self._snake_sort_wells(wells)
+    
+    def _snake_sort_wells(self, wells: list[Well]) -> list[Well]:
+        """
+        Sort wells in a snake pattern to minimize stage movement.
+        Uses calibration data for accurate well centers, falls back to FOV coordinates if unavailable.
+        
+        Snake pattern:
+        Row 1: A1 → A2 → A3 → A4 (left to right, x decreasing)
+        Row 2: B4 ← B3 ← B2 ← B1 (right to left, x increasing)  
+        Row 3: C1 → C2 → C3 → C4 (left to right, x decreasing)
+        """
+        if not wells:
+            return wells
+        
+        # Try to get well centers from calibration file
+        well_centers = self._get_well_centers_from_calibration()
+        
+        # Get wells with their coordinates
+        wells_with_coords = []
+        for well in wells:
+            if well_centers and well.well in well_centers:
+                # Use calibration data for accurate center
+                calib_coord = well_centers[well.well]
+                if hasattr(calib_coord, 'center') and calib_coord.center is not None:
+                    wells_with_coords.append((well, calib_coord.center))
+                else:
+                    wells_with_coords.append((well, (float('inf'), float('inf'))))
+            elif well.positive_fovs:
+                # Fallback to first positive FOV coordinate
+                coord = well.positive_fovs[0].fov_coord.xy
+                if coord is not None:
+                    wells_with_coords.append((well, coord))
+                else:
+                    wells_with_coords.append((well, (float('inf'), float('inf'))))
+            else:
+                wells_with_coords.append((well, (float('inf'), float('inf'))))
+        
+        # Sort by y coordinate (rows) - increasing y means top to bottom
+        wells_with_coords.sort(key=lambda item: item[1][1])
+        
+        # Group by y coordinate (rows) with some tolerance for floating point differences
+        tolerance = 1000  # 1000 microns tolerance for grouping wells in same row
+        rows = []
+        current_row = []
+        current_y = None
+        
+        for well, coord in wells_with_coords:
+            if current_y is None or abs(coord[1] - current_y) <= tolerance:
+                current_row.append((well, coord))
+                current_y = coord[1] if current_y is None else current_y
+            else:
+                if current_row:
+                    rows.append(current_row)
+                current_row = [(well, coord)]
+                current_y = coord[1]
+        
+        if current_row:  # Don't forget the last row
+            rows.append(current_row)
+        
+        # Sort each row alternating direction (snake pattern)
+        sorted_wells = []
+        for i, row in enumerate(rows):
+            if i % 2 == 0:
+                # Even rows (0, 2, 4...): left to right (x decreasing, so reverse=True)
+                row_sorted = sorted(row, key=lambda item: item[1][0], reverse=True)
+            else:
+                # Odd rows (1, 3, 5...): right to left (x increasing, so reverse=False)  
+                row_sorted = sorted(row, key=lambda item: item[1][0], reverse=False)
+            
+            sorted_wells.extend([well for well, _ in row_sorted])
+        
+        return sorted_wells
+
+    def _get_well_centers_from_calibration(self) -> dict[str, WellCircleCoord | WellSquareCoord] | None:
+        """
+        Load well centers from calibration file if available.
+        
+        Returns:
+            dict mapping well names to coordinate objects, or None if not available
+        """
+        if load_config_file is None:
+            return None
+        
+        # Look for calibration file in config directory
+        config_dir = self.run_dir / CONFIG_FOLDER
+        if not config_dir.exists():
+            return None
+        
+        # Try common calibration file names
+        calib_files = [
+            "calib_96well.json",
+            "calib.json", 
+            "calibration.json"
+        ]
+        
+        for calib_name in calib_files:
+            calib_path = config_dir / calib_name
+            if calib_path.exists():
+                try:
+                    return load_config_file(calib_path)
+                except Exception:
+                    continue
+        
+        return None
     
     @property
     def positive_fovs(self) -> list[FieldOfView]:
@@ -350,9 +460,17 @@ class Plate:
         Save the wells object to a JSON file.
         """
         if self.plate_obj_path.exists():
+            # Load the existing plate object to extend the wells
             with open(self.plate_obj_path, 'r') as fp:
                 old_data = json.load(fp, object_hook=custom_json_decoder)
-            old_plate = Plate.from_dict(old_data)
+            if isinstance(old_data, Plate):
+                old_plate = old_data
+            elif isinstance(old_data, dict):
+                old_plate = Plate.from_dict(old_data)
+            else:
+                raise ValueError("Invalid data in plate JSON file.")
+            
+            # Extend the wells and dish grid
             self._extend_wells(old_plate.well_list)
             self.dish_grid.update(old_plate.dish_grid)
         
@@ -367,7 +485,8 @@ class Plate:
         initialization logic so that all folders, CSV path, and FOVs are set up.
         """
         obj = object.__new__(cls)
-        obj.__dict__.update(data)
+        for key, value in data.items():
+            setattr(obj, key, value)
         # Optionally restore computed fields
         if not hasattr(obj, "csv_path") or obj.csv_path is None:
             obj.csv_path = obj.run_dir.joinpath(f"{DF_FILENAME}")

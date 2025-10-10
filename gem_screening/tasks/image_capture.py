@@ -20,7 +20,7 @@ from gem_screening.well_data.well_classes import FieldOfView, Well
 # Set up logging
 logger = logging.getLogger(__name__)
 T = TypeVar("T", bound=np.generic)
-BATCH_SIZE = 16
+BATCH_SIZE = 1
 
 def image_fovs(well_obj: Well, a1_manager: A1Manager, settings: PipelineSettings, imaging_loop: str, fov_ids: list[str] | None = None) -> None:
     """
@@ -122,6 +122,8 @@ def _process_fovs(imaging_loop: str, fovs_to_process: list[FieldOfView], a1_mana
     for fov in progress_bar(fovs_to_process, desc=f"Imaging {imaging_loop} of well {well}", total=total_fovs):
         for i, (loop_name, preset, post_fn) in enumerate(steps):
             img_path = snap(fov, input_preset=preset, imaging_loop=loop_name)
+            if img_path is None:
+                continue
             batches[i].append(img_path)
             if len(batches[i]) >= BATCH_SIZE:
                 post_fn(batches[i])
@@ -151,12 +153,18 @@ def _get_fovs_from_ids(well_obj: Well, fov_ids: list[str]) -> list[FieldOfView]:
     
     return result_fovs
 
-def _process_single_fov(fov_obj: FieldOfView, input_preset: PresetMeasure | PresetControl | PresetRefseg, imaging_loop: str, a1_manager: A1Manager) -> Path:
+def _process_single_fov(fov_obj: FieldOfView, input_preset: PresetMeasure | PresetControl | PresetRefseg, imaging_loop: str, a1_manager: A1Manager) -> Path | None:
     """
     Snap an image at the specified FOV using the given A1Manager and preset settings.
     """
     # Snap image
     img = snap_image(fov_obj.fov_coord, input_preset, a1_manager)
+    
+    # Check if image is empty (PFS initialization failed)
+    if img.size == 0:
+        logger.warning(f"Empty image captured for FOV {fov_obj.fov_id} in {imaging_loop}. PFS may have failed to initialize. Skipping save.")
+        fov_obj.contain_positive_cells = False
+        return None
     
     # Save image
     return _save_image(fov_obj, imaging_loop, img)
