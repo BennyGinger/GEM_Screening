@@ -35,7 +35,8 @@ def run_complete_flow(dish_grid: dict[str, dict[int, StageCoord]], a1_manager: A
         run_id (str): The unique identifier for the run.
         settings (PipelineSettings): The settings for the pipeline, including acquisition settings, dish settings, and save directory.
     """
-    with ComposeManager():
+    dev_mode = settings.dev_mode
+    with ComposeManager(dev_mode=dev_mode):
         # Clean up the redis server
         cleanup_stale()  
         

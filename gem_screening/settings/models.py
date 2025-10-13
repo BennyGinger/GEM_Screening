@@ -209,6 +209,7 @@ class PipelineSettings(BaseModel):
     Attributes:
         savedir (str): Directory where images will be saved.
         savedir_name (str): Name of the directory for saving images.
+        dev_mode (bool, optional): If True, enables development mode without tearing down the Compose environment. Defaults to False.
         base_url (str): Base URL for the servers, defaults to `localhost`.
         logging_settings (LoggingSettings): Settings for logging configuration.
         acquisition_settings (AcquisitionSettings): Settings for the aquisition process.
@@ -220,6 +221,7 @@ class PipelineSettings(BaseModel):
     """
     savedir: str
     savedir_name: str
+    dev_mode: bool = False
     base_url: str = 'localhost'
     logging_settings: LoggingSettings
     acquisition_settings: AcquisitionSettings

@@ -13,11 +13,11 @@ aqui_sets = AcquisitionSettings(
 # Settings for the dish used in the imaging process
 dish_sets = DishSettings(
                     dish_name='96well',
-                    well_selection='all',
-                    af_method='Manual',
+                    well_selection=['A1'],
+                    af_method='sq_grad',
                     overwrite_autofocus=False,
                     overwrite_calib=False,
-                    numb_field_view=1,)
+                    numb_field_view=3,)
 
 # Preset settings for imaging for measurement
 measure_sets = MeasureSettings(
@@ -57,6 +57,7 @@ stim_sets = StimSettings(
 full_settings = PipelineSettings(
     savedir=savedir,
     savedir_name=savedir_name,
+    dev_mode=True,
     base_url='localhost',
     logging_settings=LoggingSettings(log_level='INFO',),
     acquisition_settings=aqui_sets,

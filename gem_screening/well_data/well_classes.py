@@ -376,9 +376,6 @@ class Plate:
         Returns:
             dict mapping well names to coordinate objects, or None if not available
         """
-        if load_config_file is None:
-            return None
-        
         # Look for calibration file in config directory
         config_dir = self.run_dir / CONFIG_FOLDER
         if not config_dir.exists():

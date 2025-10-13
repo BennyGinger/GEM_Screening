@@ -161,7 +161,7 @@ def _process_single_fov(fov_obj: FieldOfView, input_preset: PresetMeasure | Pres
     img = snap_image(fov_obj.fov_coord, input_preset, a1_manager)
     
     # Check if image is empty (PFS initialization failed)
-    if img.size == 0:
+    if np.all(img == 0):
         logger.warning(f"Empty image captured for FOV {fov_obj.fov_id} in {imaging_loop}. PFS may have failed to initialize. Skipping save.")
         fov_obj.contain_positive_cells = False
         return None

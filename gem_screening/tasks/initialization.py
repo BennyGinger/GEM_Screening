@@ -7,13 +7,13 @@ from a1_manager import A1Manager
 from gem_screening.utils.env_loader import load_pipeline_env
 from gem_screening.logger import get_logger, configure_logging
 from gem_screening.utils.filesystem import create_timestamped_dir
-from gem_screening.utils.identifiers import make_run_id
+from gem_screening.utils.identifiers import get_run_id
 from gem_screening.utils.pipeline_constants import CONFIG_FOLDER
 from gem_screening.settings.models import PipelineSettings, MeasureSettings
 
 
 PRE_STAGE_POS = {'35mm':{'ZDrive':2500,'PFSOffset':8200},
-                 '96well':{'ZDrive':5500,'PFSOffset':4700}}
+                 '96well':{'ZDrive':5500,'PFSOffset':8200}}
 
 
 def initialize_pipeline(settings: PipelineSettings) -> tuple[A1Manager, Path, logging.Logger, str]:
@@ -54,7 +54,7 @@ def initialize_pipeline(settings: PipelineSettings) -> tuple[A1Manager, Path, lo
     logger = get_logger("main")
     
     # Log the run directory and run ID
-    run_id = make_run_id()
+    run_id = get_run_id(config_dir)
     logger.info("=" * 80)
     logger.info(f"Created run directory: {run_dir} with run ID: {run_id}")
     return a1_manager, run_dir, logger, run_id
