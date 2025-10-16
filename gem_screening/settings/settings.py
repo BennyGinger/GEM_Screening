@@ -13,14 +13,24 @@ aqui_sets = AcquisitionSettings(
 # Settings for the dish used in the imaging process
 dish_sets = DishSettings(
                     dish_name='96well',
+                    # well_selection=['A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7', 'A8', 'A9', 'A10', 'A11', 'A12'],
                     well_selection=['A1'],
-                    af_method='sq_grad',
-                    overwrite_autofocus=False,
+                    af_method='Manual',
+                    overwrite_autofocus=True,
                     overwrite_calib=False,
-                    numb_field_view=3,)
+                    # numb_field_view=1,
+                    numb_field_view=None,
+                    )
 
 # Preset settings for imaging for measurement
 measure_sets = MeasureSettings(
+                    # preset_measure=PresetMeasure(
+                    #                 optical_configuration='iRed',
+                    #                 intensity=5),
+                    # do_refseg=True,
+                    # preset_refseg=PresetRefseg(
+                    #                 optical_configuration='GFP',
+                    #                 intensity=25))
                     preset_measure=PresetMeasure(
                                     optical_configuration='GFP',
                                     intensity=25),

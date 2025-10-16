@@ -22,7 +22,7 @@ def complete_pipeline(settings: PipelineSettings) -> None:
     a1_manager, run_dir, logger, run_id = initialize_pipeline(settings)
     
     # Prompt user to focus on cells
-    if settings.dish_settings.dish_name.lower() != '35mm':
+    if settings.dish_settings.dish_name.lower() not in ['35mm', '96well']:
         try: 
             prompt_to_continue(FOCUS_PROMPT)
         except PipelineQuit:
