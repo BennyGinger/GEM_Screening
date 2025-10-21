@@ -63,7 +63,7 @@ class PresetMeasure(BaseModel):
     """
     optical_configuration: str = 'GFP'
     intensity: int = 25
-    exposure_ms: int = 100
+    exposure_ms: int = 200
 
 class PresetRefseg(BaseModel):
     """
@@ -75,7 +75,7 @@ class PresetRefseg(BaseModel):
     """
     optical_configuration: str = 'iRed'
     intensity: int = 5
-    exposure_ms: int = 100
+    exposure_ms: int = 200
     
 class PresetControl(BaseModel):
     """
@@ -87,7 +87,7 @@ class PresetControl(BaseModel):
     """
     optical_configuration: str = 'RFP'
     intensity: int = 40
-    exposure_ms: int = 100
+    exposure_ms: int = 200
 
 class PresetStim(BaseModel):
     """

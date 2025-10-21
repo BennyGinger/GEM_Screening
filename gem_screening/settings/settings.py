@@ -1,25 +1,26 @@
 from gem_screening.settings.models import AcquisitionSettings, DishSettings, PresetMeasure, PresetControl, PresetStim, ServerSettings, PresetRefseg, MeasureSettings, ControlSettings, StimSettings, PipelineSettings, LoggingSettings
 
 # Folder where the experiment folder will be created
-savedir = r'D:\Ben'
+savedir = r'D:\Boldi\Tg-c1864v2-lib72-GFPpos'
 
 # Name for the experiment folder, timestamp will be added as prefix
-savedir_name = 'test_pipeline'
-
+savedir_name = '60k-for-CellSorter'
 # Aquisition settings for the microscope
 aqui_sets = AcquisitionSettings(
-                    objective='20x',)
+                    objective='20x',
+                    lamp_name='pE-4000',)
 
 # Settings for the dish used in the imaging process
 dish_sets = DishSettings(
-                    dish_name='96well',
+                    dish_name='35mm',
                     # well_selection=['A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7', 'A8', 'A9', 'A10', 'A11', 'A12'],
                     well_selection=['A1'],
                     af_method='Manual',
                     overwrite_autofocus=True,
                     overwrite_calib=False,
                     # numb_field_view=1,
-                    numb_field_view=None,
+                    numb_field_view=5,
+                    dmd_window_only=False,
                     )
 
 # Preset settings for imaging for measurement
@@ -34,16 +35,16 @@ measure_sets = MeasureSettings(
                     preset_measure=PresetMeasure(
                                     optical_configuration='GFP',
                                     intensity=25),
-                    do_refseg=False,
+                    do_refseg=True,
                     preset_refseg=PresetRefseg(
                                     optical_configuration='iRed',
                                     intensity=5))
 
 # Settings for the segmentation and tracking server
 server_sets = ServerSettings(
-                    flow_threshold=1.0,
-                    cellprob_threshold=0.0,
-                    track_stitch_threshold=0.75)
+                    flow_threshold=0.5,
+                    cellprob_threshold=-0.4,
+                    track_stitch_threshold=0.65)
 
 # Preset settings for control imaging before and after light stimulation
 control_sets = ControlSettings(
@@ -67,7 +68,7 @@ stim_sets = StimSettings(
 full_settings = PipelineSettings(
     savedir=savedir,
     savedir_name=savedir_name,
-    dev_mode=True,
+    dev_mode=False,
     base_url='localhost',
     logging_settings=LoggingSettings(log_level='INFO',),
     acquisition_settings=aqui_sets,
