@@ -25,26 +25,55 @@ def extract_measure_intensities(fovs_list: list[FieldOfView], true_cell_threshol
         max_workers (int | None): Maximum number of workers to use for parallel processing. Defaults to None, which lets the executor decide based on available resources.
     """
     
+    # Check which FOVs need processing
+    fovs_to_process = []
+    existing_df = None
+    
     if csv_path.exists():
-        logger.info(f"CSV file {csv_path} already exists. Skipping intensity extraction.")
-        return
+        try:
+            existing_df = pd.read_csv(csv_path)
+            existing_fov_ids = set(existing_df[FOV_ID].unique()) if FOV_ID in existing_df.columns else set()
+            
+            # Filter out FOVs that are already processed
+            fovs_to_process = [fov for fov in fovs_list if fov.fov_id not in existing_fov_ids]
+            
+            if not fovs_to_process:
+                logger.info(f"All {len(fovs_list)} FOVs already exist in {csv_path}. Skipping intensity extraction.")
+                return
+            
+            logger.info(f"Found {len(existing_fov_ids)} existing FOVs in CSV. Processing {len(fovs_to_process)} new FOVs.")
+            
+        except Exception as e:
+            logger.warning(f"Error reading existing CSV {csv_path}: {e}. Processing all FOVs.")
+            fovs_to_process = fovs_list
+    else:
+        fovs_to_process = fovs_list
+        logger.info(f"CSV file {csv_path} does not exist. Processing all {len(fovs_list)} FOVs.")
 
     # Bind the threshold into a worker
     worker = lambda fov: _create_regionprops(fov, true_cell_threshold)
     
-    # Run the worker in parallel over all FOVs
+    # Run the worker in parallel over all FOVs that need processing
     region_dfs = parallel_progress_bar(
         worker,
-        fovs_list,
+        fovs_to_process,
         executor=executor,
         max_workers=max_workers,
         desc="Extracting region properties")
     
-    # Concatenate all the DataFrames
-    df = pd.concat([df for df in region_dfs if isinstance(df, pd.DataFrame)], ignore_index=True)
+    # Concatenate all the new DataFrames
+    new_df = pd.concat([df for df in region_dfs if isinstance(df, pd.DataFrame)], ignore_index=True)
     
-    df.to_csv(csv_path, index=False)
-    logger.info(f"Extracted region properties for {len(fovs_list)} FOVs and saved to {csv_path}.")
+    # Combine with existing data if available
+    if existing_df is not None and not existing_df.empty:
+        final_df = pd.concat([existing_df, new_df], ignore_index=True)
+        logger.info(f"Appended {len(fovs_to_process)} new FOVs to existing {len(existing_df[FOV_ID].unique())} FOVs in CSV.")
+    else:
+        final_df = new_df
+    
+    # Save the combined DataFrame
+    final_df.to_csv(csv_path, index=False)
+    logger.info(f"Extracted region properties for {len(fovs_to_process)} FOVs and saved to {csv_path}.")
 
 def update_control_intensities(fovs: list[FieldOfView], csv_path: Path, *, executor: str = 'thread', max_workers: int | None = None) -> None:
     """

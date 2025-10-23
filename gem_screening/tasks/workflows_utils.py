@@ -67,7 +67,7 @@ def after_scan(a1_manager: A1Manager, settings: PipelineSettings, plate_obj: Pla
     """
     _cell_selection(settings, plate_obj)
 
-    _illuminate(a1_manager, settings, plate_obj)
+    # _illuminate(a1_manager, settings, plate_obj)
     
     logger.info(f"Completed processing for well: {plate_obj.wells}")
 
@@ -84,8 +84,8 @@ def _cell_selection(settings: PipelineSettings, plate_obj: Plate) -> None:
                                 true_cell_threshold=stim_sets.true_cell_threshold,
                                 csv_path=plate_obj.csv_path)
 
-    if _is_csv_ready_for_processing(plate_obj):
-        run_celltinder(plate_obj.csv_path, crop_size=stim_sets.crop_size)
+    # if _is_csv_ready_for_processing(plate_obj):
+    #     run_celltinder(plate_obj.csv_path, crop_size=stim_sets.crop_size)
 
 def _illuminate(a1_manager: A1Manager, settings: PipelineSettings, plate_obj: Plate) -> None:
     """
