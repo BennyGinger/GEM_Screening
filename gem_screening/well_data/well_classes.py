@@ -282,8 +282,6 @@ class Plate:
 
         # Set up the CSV path
         self.csv_path = self.run_dir.joinpath(f"{DF_FILENAME}")
-        if self.csv_path.exists():
-            self.csv_path.unlink()
         
         self.to_json()
     
