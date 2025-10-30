@@ -4,16 +4,18 @@ from pathlib import Path
 from a1_manager import A1Manager, StageCoord
 from cp_server import ComposeManager
 
+from gem_screening.tasks.data_intensity import extract_measure_intensities
 from gem_screening.tasks.image_capture import image_fovs
-from gem_screening.tasks.workflows_utils import scan_round1, scan_round2, after_scan
+from gem_screening.tasks.workflows_utils import scan_round1, scan_round2, illuminate
 from gem_screening.utils.client.cleanup import cleanup_stale
 from gem_screening.utils.client.mask_registration import register_masks_batch_client
+from gem_screening.utils.external import run_celltinder
 from gem_screening.utils.pipeline_constants import MEASURE_LABEL
-from gem_screening.utils.prompts import prompt_to_continue, ADD_LIGAND_PROMPT
+from gem_screening.utils.prompts import get_ligand_prompt, prompt_to_continue
 from gem_screening.tasks.rescue_assessment import assess_rescue
 from gem_screening.utils.prompt_gui import PipelineQuit
 from gem_screening.settings.models import PipelineSettings
-from gem_screening.well_data.well_classes import Plate
+from gem_screening.well_data.well_classes import Plate, Well
 
 
 logger = logging.getLogger(__name__)
@@ -45,21 +47,34 @@ def run_complete_flow(dish_grid: dict[str, dict[int, StageCoord]], a1_manager: A
         
         # Initialize plate object
         plate = Plate(run_dir=run_dir, run_id=run_id, dish_grid=dish_grid)
-        
-        # Start imaging
-        scan_round1(a1_manager, settings, plate)
 
-        try:
-            prompt_to_continue(ADD_LIGAND_PROMPT)
-            
-        except PipelineQuit:
+        # Prompt message mapping
+        list_type = settings.dish_settings.well_grouping
+        prompt_message = get_ligand_prompt(list_type)
+
+        for well_sublist in plate.well_sublists(list_type=list_type):
+            # Start imaging
+            scan_round1(a1_manager, settings, well_sublist)
+            plate.to_json()
+
+            try:
+                identifier = _get_identifier(well_sublist, list_type)
+                prompt = prompt_message + identifier if identifier else prompt_message
+                prompt_to_continue(prompt)
+            except PipelineQuit:
                 logger.info("User chose to quit the pipeline during imaging/stimulation.")
                 raise
+
+            scan_round2(a1_manager, settings, well_sublist)
+            plate.to_json()
             
-        scan_round2(a1_manager, settings, plate)  
+            extract_measure_intensities(plate.positive_fovs,
+                                true_cell_threshold=settings.stim_settings.true_cell_threshold,
+                                csv_path=plate.csv_path)
+
+        run_celltinder(plate.csv_path, crop_size=settings.stim_settings.crop_size)
         
-        after_scan(a1_manager, settings, plate)
-        
+        illuminate(a1_manager, settings, plate)
         logger.info("Completed processing for all wells.")
 
 def run_rescue_flow(a1_manager: A1Manager, settings: PipelineSettings, plate_obj: Plate,) -> None:
@@ -91,8 +106,13 @@ def run_rescue_flow(a1_manager: A1Manager, settings: PipelineSettings, plate_obj
                 # Start from round 2 imaging
                 _from_scan(False, a1_manager, settings, plate_obj, rescue_plan["fovs_to_process"])
             case "celltinder":
-                after_scan(a1_manager, settings, plate_obj)
-            
+                extract_measure_intensities(plate_obj.positive_fovs,
+                                true_cell_threshold=settings.stim_settings.true_cell_threshold,
+                                csv_path=plate_obj.csv_path)
+                
+                run_celltinder(plate_obj.csv_path, crop_size=settings.stim_settings.crop_size)
+
+                illuminate(a1_manager, settings, plate_obj)
 
 def _from_scan(do_round1: bool, a1_manager: A1Manager, settings: PipelineSettings, plate_obj: Plate, fov_ids: list[str] | None = None) -> None:
     """ 
@@ -104,21 +124,49 @@ def _from_scan(do_round1: bool, a1_manager: A1Manager, settings: PipelineSetting
         well_obj (Well): The well object to process.
         fov_ids (list[str] | None): Optional list of specific FOV IDs to image. If None, all positive FOVs will be imaged.
     """
+    # Get the ligand addition prompt message
+    list_type = settings.dish_settings.well_grouping
+    prompt_message = get_ligand_prompt(list_type)
+    
     # Run flow from round 1
-    if do_round1:
-        for well_obj in plate_obj.well_list:
-            image_fovs(well_obj, a1_manager, settings, f"{MEASURE_LABEL}_1", fov_ids)
-        fov_ids = None  # After round 1, image all FOVs in round 2
-    try:
-        scan_round2(a1_manager, settings, plate_obj, fov_ids)
-    except PipelineQuit:
-        logger.info("User chose to quit the pipeline during imaging/stimulation.")
-        raise
-    after_scan(a1_manager, settings, plate_obj)
+    for well_sublist in plate_obj.well_sublists(list_type=list_type):
+        if do_round1:
+            for well_obj in well_sublist:
+                image_fovs(well_obj, a1_manager, settings, f"{MEASURE_LABEL}_1", fov_ids)
+            fov_ids = None  # After round 1, image all FOVs in round 2
+            plate_obj.to_json()
+        try:
+            
+            identifier = _get_identifier(well_sublist, list_type)
+            prompt = prompt_message + identifier if identifier else prompt_message
+            prompt_to_continue(prompt)
+        except PipelineQuit:
+            logger.info("User chose to quit the pipeline during imaging/stimulation.")
+            raise
+        scan_round2(a1_manager, settings, well_sublist, fov_ids)
+        plate_obj.to_json()
+        
+        extract_measure_intensities(plate_obj.positive_fovs,
+                                true_cell_threshold=settings.stim_settings.true_cell_threshold,
+                                csv_path=plate_obj.csv_path)
+
+    run_celltinder(plate_obj.csv_path, crop_size=settings.stim_settings.crop_size)
+    
+    illuminate(a1_manager, settings, plate_obj)
     
     logger.info(f"Completed processing for well: {plate_obj.wells}")
 
-
+def _get_identifier(well_sublist: list[Well], list_type: str) -> str:
+    """
+    Get the identifier (row or column) for the well sublist based on the grouping type.
+    """
+    if list_type == 'col':
+        return well_sublist[0].well[1]  # e.g., '1' for column 1
+    elif list_type == 'row':
+        return well_sublist[0].well[0]  # e.g., 'A' for row A
+    elif list_type == 'well':
+        return well_sublist[0].well  # e.g., 'A1' for well A1
+    return ''
 
         
 

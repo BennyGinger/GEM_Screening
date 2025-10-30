@@ -1,7 +1,8 @@
 from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
-import itertools
+from collections import defaultdict
+import re
 import json
 from pathlib import Path
 import shutil
@@ -297,6 +298,151 @@ class Plate:
         wells = [w for w in self._well_list if w.process_well]
         return self._snake_sort_wells(wells)
     
+    @property
+    def positive_fovs(self) -> list[FieldOfView]:
+        """
+        Get all positive FOVs across all wells in the plate.
+        Returns:
+            list[FieldOfView]: List of all positive FieldOfView objects in the plate.
+        """
+        pos_fovs = []
+        for well in self.well_list:
+            pos_fovs.extend(well.positive_fovs)
+        return pos_fovs
+
+    @property
+    def wells(self) -> list[str]:
+        """
+        Get a list of all well names in the plate.
+        Returns:
+            list[str]: List of all well names in the plate.
+        """
+        return [w.well for w in self.well_list]
+
+    @property
+    def mask_dirs(self) -> list[Path]:
+        """
+        Get a list of all mask directories across all wells in the plate.
+        Returns:
+            list[Path]: List of all mask directory paths in the plate.
+        """
+        return [w.mask_dir for w in self.well_list]
+    
+    @property
+    def plate_obj_path(self)-> Path:
+        return self.run_dir.joinpath(CONFIG_FOLDER, f"{self.run_id}_{OBJ_FILENAME}")
+    
+    def select_wells(self, well_names: list[str]) -> None:
+        """
+        Select wells to process based on a list of well names. Only wells with names in the provided list will be marked for processing.
+        Args:
+            well_names (list[str]): List of well names to select for processing.
+        """
+        for well in self._well_list:
+            well.process_well = True if well.well in well_names else False
+    
+    def well_sublists(self, list_type: str = 'col') -> list[list[Well]]:
+        """
+        Create sublists of wells grouped by column or row.
+        Args:
+            list_type (str): 'col' to group by column, 'row' to group by row.
+        Returns:
+            list[list[Well]]: Sublists of Well objects grouped accordingly.
+        """
+        if list_type not in ('col', 'row', 'well', 'all'):
+            raise ValueError("list_type must be 'col', 'row', 'well', or 'all'")
+
+        # If 'all', return the entire well list as a single sublist
+        if list_type == 'all':
+            return [self.well_list]
+        
+        if list_type == 'well':
+            # Each well in its own sublist
+            return [[well] for well in self.well_list]
+        
+        groups = defaultdict(list)
+        for well in self._well_list:
+            match = re.match(r"([A-Za-z]+)([0-9]+)", well.well)
+            if not match:
+                continue
+            row, col = match.groups()
+            key = col if list_type == 'col' else row.upper()
+            groups[key].append(well)
+        # Sort groups by key (col as int, row as letter)
+        if list_type == 'col':
+            sorted_keys = sorted(groups.keys(), key=lambda x: int(x))
+        else:
+            sorted_keys = sorted(groups.keys())
+        return [groups[k] for k in sorted_keys]
+    
+    def mask_dir_glob(self, pattern: str) -> list[Path]:
+        """
+        Get a list of all mask files across all wells in the plate.
+        Returns:
+            list[Path]: List of all mask file paths in the plate.
+        """
+        mask_files = []
+        for well in self.well_list:
+            mask_files.extend(well.mask_dir.glob(pattern))
+        return mask_files
+
+    def to_json(self) -> None:
+        """
+        Save the wells object to a JSON file.
+        """
+        if self.plate_obj_path.exists():
+            # Load the existing plate object to extend the wells
+            with open(self.plate_obj_path, 'r') as fp:
+                old_data = json.load(fp, object_hook=custom_json_decoder)
+            if isinstance(old_data, Plate):
+                old_plate = old_data
+            elif isinstance(old_data, dict):
+                old_plate = Plate.from_dict(old_data)
+            else:
+                raise ValueError("Invalid data in plate JSON file.")
+            
+            # Extend the wells and dish grid
+            self._extend_wells(old_plate.well_list)
+            self.dish_grid.update(old_plate.dish_grid)
+        
+        # Save the plate object to a JSON file
+        with open(self.plate_obj_path, 'w') as fp:
+            json.dump(self, fp, cls=CustomJSONEncoder, indent=2)
+    
+    @classmethod
+    def from_dict(cls: type[Plate], data: dict[str, Any]) -> Plate:
+        """
+        Reconstruct a Plate from its serialized dict, replaying the same
+        initialization logic so that all folders, CSV path, and FOVs are set up.
+        """
+        obj = object.__new__(cls)
+        for key, value in data.items():
+            setattr(obj, key, value)
+        # Optionally restore computed fields
+        if not hasattr(obj, "csv_path") or obj.csv_path is None:
+            obj.csv_path = obj.run_dir.joinpath(f"{DF_FILENAME}")
+        return obj
+    
+    @classmethod
+    def from_json(cls: type["Plate"], file_path: Path) -> "Plate":
+        """
+        Load a Plate object from a JSON file.
+        """
+        with open(file_path, 'r') as f:
+            data = json.load(f, object_hook=custom_json_decoder)
+        return data if isinstance(data, Plate) else cls.from_dict(data)
+    
+    def _extend_wells(self, new_wells: list[Well]) -> None:
+        """
+        Extend the well_list with only new wells (no duplicates by well_id).
+        """
+        existing_ids = {w.well_id for w in self.well_list}
+        for well in new_wells:
+            if well.well_id not in existing_ids:
+                self.well_list.append(well)
+                existing_ids.add(well.well_id)
+        self.well_list.sort(key=lambda w: w.well)  # sort by well name
+    
     def _snake_sort_wells(self, wells: list[Well]) -> list[Well]:
         """
         Sort wells in a snake pattern to minimize stage movement.
@@ -383,9 +529,8 @@ class Plate:
         
         # Try common calibration file names
         calib_files = [
+            "calib_35mm.json",
             "calib_96well.json",
-            "calib.json", 
-            "calibration.json"
         ]
         
         for calib_name in calib_files:
@@ -398,116 +543,6 @@ class Plate:
         
         return None
     
-    @property
-    def positive_fovs(self) -> list[FieldOfView]:
-        """
-        Get all positive FOVs across all wells in the plate.
-        Returns:
-            list[FieldOfView]: List of all positive FieldOfView objects in the plate.
-        """
-        pos_fovs = []
-        for well in self.well_list:
-            pos_fovs.extend(well.positive_fovs)
-        return pos_fovs
-
-    @property
-    def wells(self) -> list[str]:
-        """
-        Get a list of all well names in the plate.
-        Returns:
-            list[str]: List of all well names in the plate.
-        """
-        return [w.well for w in self.well_list]
-
-    @property
-    def mask_dirs(self) -> list[Path]:
-        """
-        Get a list of all mask directories across all wells in the plate.
-        Returns:
-            list[Path]: List of all mask directory paths in the plate.
-        """
-        return [w.mask_dir for w in self.well_list]
-    
-    @property
-    def plate_obj_path(self)-> Path:
-        return self.run_dir.joinpath(CONFIG_FOLDER, f"{self.run_id}_{OBJ_FILENAME}")
-    
-    def select_wells(self, well_names: list[str]) -> None:
-        """
-        Select wells to process based on a list of well names. Only wells with names in the provided list will be marked for processing.
-        Args:
-            well_names (list[str]): List of well names to select for processing.
-        """
-        for well in self._well_list:
-            well.process_well = True if well.well in well_names else False
-    
-    def mask_dir_glob(self, pattern: str) -> list[Path]:
-        """
-        Get a list of all mask files across all wells in the plate.
-        Returns:
-            list[Path]: List of all mask file paths in the plate.
-        """
-        mask_files = []
-        for well in self.well_list:
-            mask_files.extend(well.mask_dir.glob(pattern))
-        return mask_files
-
-    def to_json(self) -> None:
-        """
-        Save the wells object to a JSON file.
-        """
-        if self.plate_obj_path.exists():
-            # Load the existing plate object to extend the wells
-            with open(self.plate_obj_path, 'r') as fp:
-                old_data = json.load(fp, object_hook=custom_json_decoder)
-            if isinstance(old_data, Plate):
-                old_plate = old_data
-            elif isinstance(old_data, dict):
-                old_plate = Plate.from_dict(old_data)
-            else:
-                raise ValueError("Invalid data in plate JSON file.")
-            
-            # Extend the wells and dish grid
-            self._extend_wells(old_plate.well_list)
-            self.dish_grid.update(old_plate.dish_grid)
-        
-        # Save the plate object to a JSON file
-        with open(self.plate_obj_path, 'w') as fp:
-            json.dump(self, fp, cls=CustomJSONEncoder, indent=2)
-    
-    @classmethod
-    def from_dict(cls: type[Plate], data: dict[str, Any]) -> Plate:
-        """
-        Reconstruct a Plate from its serialized dict, replaying the same
-        initialization logic so that all folders, CSV path, and FOVs are set up.
-        """
-        obj = object.__new__(cls)
-        for key, value in data.items():
-            setattr(obj, key, value)
-        # Optionally restore computed fields
-        if not hasattr(obj, "csv_path") or obj.csv_path is None:
-            obj.csv_path = obj.run_dir.joinpath(f"{DF_FILENAME}")
-        return obj
-    
-    @classmethod
-    def from_json(cls: type["Plate"], file_path: Path) -> "Plate":
-        """
-        Load a Plate object from a JSON file.
-        """
-        with open(file_path, 'r') as f:
-            data = json.load(f, object_hook=custom_json_decoder)
-        return data if isinstance(data, Plate) else cls.from_dict(data)
-    
-    def _extend_wells(self, new_wells: list[Well]) -> None:
-        """
-        Extend the well_list with only new wells (no duplicates by well_id).
-        """
-        existing_ids = {w.well_id for w in self.well_list}
-        for well in new_wells:
-            if well.well_id not in existing_ids:
-                self.well_list.append(well)
-                existing_ids.add(well.well_id)
-        self.well_list.sort(key=lambda w: w.well)  # sort by well name
     
     def __len__(self) -> int:
         """

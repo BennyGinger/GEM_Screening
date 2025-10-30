@@ -4,7 +4,9 @@ Functions to assess the current state of a pipeline run for rescue operations.
 from pathlib import Path
 from typing import Dict, Any
 
-from gem_screening.utils.pipeline_constants import MASK_LABEL
+import pandas as pd
+
+from gem_screening.utils.pipeline_constants import MASK_LABEL, FOV_ID
 from gem_screening.well_data.well_classes import Plate
 
 
@@ -24,14 +26,32 @@ def assess_rescue(plate_obj: Plate) -> Dict[str, Any]:
     """
     expected_fov_ids = {fov.fov_id for fov in plate_obj.positive_fovs}
     
-    # Case 3: Check for CSV file (celltinder or illuminate case)
+    # Check which FOVs need processing for data extraction
+    fovs_to_process_extraction = []
+    existing_df = None
+    
     if plate_obj.csv_path.exists():
-        return {
-            "case": "celltinder",
-            "masks_to_register": [],
-            "fovs_to_process": [],
-            "total_fovs": len(expected_fov_ids)
-        }
+        try:
+            existing_df = pd.read_csv(plate_obj.csv_path)
+            existing_fov_ids = set(existing_df[FOV_ID].unique()) if FOV_ID in existing_df.columns else set()
+            
+            # Filter out FOVs that are already processed for data extraction
+            fovs_to_process_extraction = [fov for fov in plate_obj.positive_fovs if fov.fov_id not in existing_fov_ids]
+            
+            if not fovs_to_process_extraction:
+                # All FOVs already exist in CSV - go to celltinder
+                return {
+                    "case": "celltinder",
+                    "masks_to_register": [],
+                    "fovs_to_process": [],
+                    "total_fovs": len(expected_fov_ids)
+                }
+            
+        except Exception as e:
+            # Error reading CSV, continue with assessment
+            fovs_to_process_extraction = list(plate_obj.positive_fovs)
+    else:
+        fovs_to_process_extraction = list(plate_obj.positive_fovs)
     
     # Define helper function first
     def extract_fov_id(file_path: Path) -> str:

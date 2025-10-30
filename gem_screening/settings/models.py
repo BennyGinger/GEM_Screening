@@ -33,6 +33,7 @@ class DishSettings(BaseModel):
     Attributes:
         dish_name (str, optional): Name of the dish, e.g., '35mm', 'ibidi-8well', or '96well'. Defaults to '35mm'.
         well_selection (str | list[str], optional): Well name or list of wells to image, e.g., ['A1', 'A2']. If 'all', will image all possible wells. Defaults to ['A1'].
+        well_grouping (str, optional): Grouping of wells for imaging, either by 'col' (columns), 'row' (rows) or 'all' (no grouping). Defaults to 'col'.
         af_method (str, optional): Method for autofocus, e.g., 'sq_grad' or 'Manual'. Defaults to 'sq_grad'.
         dmd_window_only (bool, optional): If True, will only use the DMD window for measurement. Defaults to True.
         numb_field_view (int, optional): Number of field views to image. If None, will run the whole well.
@@ -44,6 +45,7 @@ class DishSettings(BaseModel):
     """
     dish_name: str = '35mm'
     well_selection: str | list[str] = ['A1']
+    well_grouping: str = 'col'  # 'col' or 'row'
     af_method: str = 'sq_grad'
     dmd_window_only: bool = True
     numb_field_view: int | None = None

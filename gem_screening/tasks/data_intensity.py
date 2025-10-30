@@ -25,9 +25,30 @@ def extract_measure_intensities(fovs_list: list[FieldOfView], true_cell_threshol
         max_workers (int | None): Maximum number of workers to use for parallel processing. Defaults to None, which lets the executor decide based on available resources.
     """
     
+    # Check which FOVs need processing
+    fovs_to_process = []
+    existing_df = None
+    
     if csv_path.exists():
-        logger.info(f"CSV file {csv_path} already exists. Skipping intensity extraction.")
-        return
+        try:
+            existing_df = pd.read_csv(csv_path)
+            existing_fov_ids = set(existing_df[FOV_ID].unique()) if FOV_ID in existing_df.columns else set()
+            
+            # Filter out FOVs that are already processed
+            fovs_to_process = [fov for fov in fovs_list if fov.fov_id not in existing_fov_ids]
+            
+            if not fovs_to_process:
+                logger.info(f"All {len(fovs_list)} FOVs already exist in {csv_path}. Skipping intensity extraction.")
+                return
+            
+            logger.info(f"Found {len(existing_fov_ids)} existing FOVs in CSV. Processing {len(fovs_to_process)} new FOVs.")
+            
+        except Exception as e:
+            logger.warning(f"Error reading existing CSV {csv_path}: {e}. Processing all FOVs.")
+            fovs_to_process = fovs_list
+    else:
+        fovs_to_process = fovs_list
+        logger.info(f"CSV file {csv_path} does not exist. Processing all {len(fovs_list)} FOVs.")
 
     # Bind the threshold into a worker
     worker = lambda fov: _create_regionprops(fov, true_cell_threshold)
