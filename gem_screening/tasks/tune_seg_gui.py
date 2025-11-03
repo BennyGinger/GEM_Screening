@@ -366,7 +366,6 @@ class TuneSegWidget(QWidget):
             q_image = QImage(img_array.data, width, height, bytes_per_line, QImage.Format.Format_RGB888)
         return QPixmap.fromImage(q_image)
         
-
     def _update_image_display(self):
         if hasattr(self, 'image_label'):
             if self.image is not None:
