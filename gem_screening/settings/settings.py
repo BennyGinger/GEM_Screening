@@ -14,6 +14,7 @@ dish_sets = DishSettings(
                     dish_name='96well',
                     # well_selection=['A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7', 'A8', 'A9', 'A10', 'A11', 'A12'],
                     well_selection='all',
+                    well_grouping='col',
                     af_method='Manual',
                     overwrite_autofocus=False,
                     overwrite_calib=False,
