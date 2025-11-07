@@ -44,7 +44,10 @@ def run_complete_flow(dish_grid: dict[str, dict[int, StageCoord]], a1_manager: A
         cleanup_stale()  
         
         # Optimize Segmentation settings
-        server_settings = launch_tune_seg_gui(settings)
+        server_settings = launch_tune_seg_gui(settings, dish_grid=dish_grid, a1_manager=a1_manager)
+        if server_settings is not None:
+            settings.server_settings = server_settings
+            logger.info(f"Updated server settings: {settings.server_settings}")
         
         # Initialize plate object
         plate = Plate(run_dir=run_dir, run_id=run_id, dish_grid=dish_grid)

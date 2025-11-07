@@ -38,6 +38,10 @@ class ExtraParamsTextEdit(QTextEdit):
 
 
 class TuneSegWidget(QWidget):
+    def _init_well_cache(self):
+        """Initialize or reset the well cache for random image selection."""
+        self._used_wells = set()
+
     
     result_signal = pyqtSignal(str)
     def __init__(self, settings: PipelineSettings, img: Optional[NDArray] = None, mask: Optional[NDArray] = None, dish_grid=None, a1_manager=None, parent: Optional[QWidget] = None):
@@ -62,6 +66,9 @@ class TuneSegWidget(QWidget):
         self.image_collector = None
         if dish_grid is not None and a1_manager is not None:
             self.image_collector = ImageCollector(dish_grid, a1_manager, settings)
+
+        # Well cache for random image selection
+        self._init_well_cache()
 
         # Initialize Cellpose metadata
         self.cellpose_metadata = self._get_cellpose_metadata()
@@ -340,39 +347,101 @@ class TuneSegWidget(QWidget):
         """Append a message to the log display area."""
         self.log_display.append(message)
 
-    def _update_history_display(self) -> None:
-        """Update the coordinate history display."""
+    def _update_history_display(self, last_loaded_fov_id=None) -> None:
+        """Update the coordinate history display, preserving user selection if possible."""
         if self.image_collector is None or not hasattr(self, 'history_list'):
             return
-            
+
+        # If a specific FOV ID was just loaded, use that for selection
+        # Otherwise, try to preserve the currently selected FOV ID
+        selected_fov_id = last_loaded_fov_id
+        if selected_fov_id is None:
+            current_item = self.history_list.currentItem() if self.history_list.count() > 0 else None
+            if current_item is not None:
+                selected_fov_id = current_item.data(Qt.ItemDataRole.UserRole)
+
         self.history_list.clear()
-        # Display coordinates as they come (not sorted)
-        for coord in self.image_collector.history:
-            # Display as xy tuple but keep full StageCoord
-            x, y = coord.xy
-            coord_text = f"({x:.1f}, {y:.1f})" if x is not None and y is not None else "Unknown"
-            item_widget = QListWidgetItem(coord_text)
-            item_widget.setData(1, coord)  # Store the full StageCoord as item data
-            self.history_list.addItem(item_widget)
+        fov_id_to_row = {}
         
-        # Select the last entry by default
-        if self.history_list.count() > 0:
-            self.history_list.setCurrentRow(self.history_list.count() - 1)
+        # History is now a dict: {'P3F4': StageCoord}
+        for idx, (fov_id, coord) in enumerate(self.image_collector.history.items()):
+            # Extract well and instance from fov_id (e.g., 'P3F4' -> P3, F4)
+            if fov_id.startswith('P'):
+                instance_part = fov_id[1:]  # Remove 'P'
+                # Find where digits end and letters begin
+                i = 0
+                while i < len(instance_part) and instance_part[i].isdigit():
+                    i += 1
+                instance = instance_part[:i]
+                well = instance_part[i:]
+                
+                x, y = coord.xy if coord.xy != (None, None) else (0, 0)
+                coord_text = f"P{instance} in well {well} ({x:.1f}, {y:.1f})"
+            else:
+                x, y = coord.xy if coord.xy != (None, None) else (0, 0)
+                coord_text = f"{fov_id} ({x:.1f}, {y:.1f})"
+            
+            item_widget = QListWidgetItem()
+            item_widget.setText(coord_text)  # Set text explicitly
+            item_widget.setData(Qt.ItemDataRole.UserRole, fov_id)  # Store FOV ID for loading  
+            item_widget.setData(Qt.ItemDataRole.UserRole + 1, coord)  # Store StageCoord
+            self.history_list.addItem(item_widget)
+            fov_id_to_row[fov_id] = idx
+
+        # Select the appropriate row
+        row_to_select = None
+        if selected_fov_id is not None and selected_fov_id in fov_id_to_row:
+            row_to_select = fov_id_to_row[selected_fov_id]
+        elif self.history_list.count() > 0:
+            # Default to last entry if no specific selection
+            row_to_select = self.history_list.count() - 1
+
+        if row_to_select is not None:
+            self.history_list.setCurrentRow(row_to_select)
 
     def _load_random_image(self) -> None:
-        """Load a random image using ImageCollector."""
+        """Load a random image using ImageCollector. If exhausted, switch to a new well not previously used."""
         if self.image_collector is None:
             self._log("No ImageCollector available")
             return
-            
-        try:
-            self.image = self.image_collector.get_image()
-            self._update_history_display()
-            self._auto_scale()
-            self._run_segmentation_with_current_settings()
-            self._log("Random image loaded successfully")
-        except Exception as e:
-            self._log(f"Failed to load random image: {str(e)}")
+
+        wells = list(self.image_collector.dish_grid.keys())
+        if not hasattr(self, '_used_wells'):
+            self._init_well_cache()
+
+        tried_wells = set()
+        while True:
+            # If current well_coords is empty or not set, pick a new well
+            if not getattr(self.image_collector, 'well_coords', None):
+                unused_wells = [w for w in wells if w not in self._used_wells]
+                if not unused_wells:
+                    self._log("All wells have been used, resetting well cache.")
+                    self._init_well_cache()
+                    unused_wells = wells
+                import random
+                new_well = random.choice(unused_wells)
+                self.image_collector.get_well(new_well)
+                self._used_wells.add(new_well)
+            try:
+                self.image = self.image_collector.get_image()
+                # Get the last FOV ID that was just loaded (most recent in history)
+                # History is now dict: {'P3F4': StageCoord}
+                last_loaded_fov_id = list(self.image_collector.history.keys())[-1] if self.image_collector.history else None
+                self._update_history_display(last_loaded_fov_id)
+                self._auto_scale()
+                self._run_segmentation_with_current_settings()
+                self._log(f"Random image loaded successfully from well {self.image_collector.well}")
+                break
+            except Exception as e:
+                self._log(f"Failed to load random image from well {self.image_collector.well}: {str(e)}")
+                tried_wells.add(self.image_collector.well)
+                # Mark this well as used and try another
+                self._used_wells.add(self.image_collector.well)
+                self.image_collector.get_well(None)
+                # If all wells tried in this call, abort
+                if len(tried_wells) == len(wells):
+                    self._log("No more random images available in any well.")
+                    break
 
     def _on_load_selected_coord(self) -> None:
         """Load image from selected coordinate."""
@@ -386,9 +455,11 @@ class TuneSegWidget(QWidget):
             return
             
         try:
-            coord = current_item.data(1)  # Get the stored StageCoord
+            fov_id = current_item.data(Qt.ItemDataRole.UserRole)  # Get the stored FOV ID
+            coord = self.image_collector.history[fov_id]  # Get the StageCoord from history
             self.image = self.image_collector.get_image(coord)
-            self._update_history_display()
+            # Keep the selection on the FOV ID that was manually selected
+            self._update_history_display(fov_id)
             self._auto_scale()
             self._run_segmentation_with_current_settings()
             x, y = coord.xy

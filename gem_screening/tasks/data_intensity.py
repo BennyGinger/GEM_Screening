@@ -50,22 +50,52 @@ def extract_measure_intensities(fovs_list: list[FieldOfView], true_cell_threshol
         fovs_to_process = fovs_list
         logger.info(f"CSV file {csv_path} does not exist. Processing all {len(fovs_list)} FOVs.")
 
+    # Filter out FOVs that don't have required images
+    valid_fovs = []
+    skipped_fovs = []
+    
+    for fov in fovs_to_process:
+        # Check if FOV has required measure images
+        measure_images = fov.tiff_paths.get(MEASURE_LABEL, [])
+        mask_images = fov.tiff_paths.get(MASK_LABEL, [])
+        
+        if len(measure_images) >= 2 and len(mask_images) >= 1:
+            valid_fovs.append(fov)
+        else:
+            skipped_fovs.append(fov)
+            logger.debug(f"Skipping FOV {fov.fov_id}: has {len(measure_images)} measure images and {len(mask_images)} masks (need 2+ measure, 1+ mask)")
+    
+    if skipped_fovs:
+        logger.warning(f"Skipping {len(skipped_fovs)} FOVs that don't have required images. Processing {len(valid_fovs)} valid FOVs.")
+    
+    if not valid_fovs:
+        logger.info("No valid FOVs to process.")
+        return
+        
+    fovs_to_process = valid_fovs
+
     # Bind the threshold into a worker
     worker = lambda fov: _create_regionprops(fov, true_cell_threshold)
     
     # Run the worker in parallel over all FOVs
     region_dfs = parallel_progress_bar(
         worker,
-        fovs_list,
+        fovs_to_process,
         executor=executor,
         max_workers=max_workers,
         desc="Extracting region properties")
     
     # Concatenate all the DataFrames
-    df = pd.concat([df for df in region_dfs if isinstance(df, pd.DataFrame)], ignore_index=True)
+    new_df = pd.concat([df for df in region_dfs if isinstance(df, pd.DataFrame)], ignore_index=True)
+    
+    # If there's existing data, combine it with the new data
+    if existing_df is not None:
+        df = pd.concat([existing_df, new_df], ignore_index=True)
+    else:
+        df = new_df
     
     df.to_csv(csv_path, index=False)
-    logger.info(f"Extracted region properties for {len(fovs_list)} FOVs and saved to {csv_path}.")
+    logger.info(f"Extracted region properties for {len(fovs_to_process)} FOVs and saved to {csv_path}.")
 
 def update_control_intensities(fovs: list[FieldOfView], csv_path: Path, *, executor: str = 'thread', max_workers: int | None = None) -> None:
     """

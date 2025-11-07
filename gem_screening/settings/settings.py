@@ -1,37 +1,29 @@
 from gem_screening.settings.models import AcquisitionSettings, DishSettings, PresetMeasure, PresetControl, PresetStim, ServerSettings, PresetRefseg, MeasureSettings, ControlSettings, StimSettings, PipelineSettings, LoggingSettings
 
 # Folder where the experiment folder will be created
-savedir = r'D:\Boldi\Tg-c1864v2-lib72-GFPpos'
+savedir = r'D:\Ben'
 
 # Name for the experiment folder, timestamp will be added as prefix
-savedir_name = '60k-for-CellSorter'
+savedir_name = 'test_pipeline'
 # Aquisition settings for the microscope
 aqui_sets = AcquisitionSettings(
-                    objective='20x',
-                    lamp_name='pE-4000',)
+                    objective='20x',)
 
 # Settings for the dish used in the imaging process
 dish_sets = DishSettings(
-                    dish_name='35mm',
+                    dish_name='96well',
                     # well_selection=['A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7', 'A8', 'A9', 'A10', 'A11', 'A12'],
-                    well_selection=['A1'],
+                    well_selection='all',
                     af_method='Manual',
-                    overwrite_autofocus=True,
+                    overwrite_autofocus=False,
                     overwrite_calib=False,
                     # numb_field_view=1,
-                    numb_field_view=5,
+                    numb_field_view=3,
                     dmd_window_only=False,
                     )
 
 # Preset settings for imaging for measurement
 measure_sets = MeasureSettings(
-                    # preset_measure=PresetMeasure(
-                    #                 optical_configuration='iRed',
-                    #                 intensity=5),
-                    # do_refseg=True,
-                    # preset_refseg=PresetRefseg(
-                    #                 optical_configuration='GFP',
-                    #                 intensity=25))
                     preset_measure=PresetMeasure(
                                     optical_configuration='GFP',
                                     intensity=25),
@@ -68,7 +60,7 @@ stim_sets = StimSettings(
 full_settings = PipelineSettings(
     savedir=savedir,
     savedir_name=savedir_name,
-    dev_mode=False,
+    dev_mode=True,
     base_url='localhost',
     logging_settings=LoggingSettings(log_level='INFO',),
     acquisition_settings=aqui_sets,
