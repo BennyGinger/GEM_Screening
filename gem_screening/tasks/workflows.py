@@ -6,6 +6,7 @@ from cp_server import ComposeManager
 
 from gem_screening.tasks.data_intensity import extract_measure_intensities
 from gem_screening.tasks.image_capture import image_fovs
+from gem_screening.tasks.tune_seg_gui import launch_tune_seg_gui
 from gem_screening.tasks.workflows_utils import scan_round1, scan_round2, illuminate
 from gem_screening.utils.client.cleanup import cleanup_stale
 from gem_screening.utils.client.mask_registration import register_masks_batch_client
@@ -43,7 +44,7 @@ def run_complete_flow(dish_grid: dict[str, dict[int, StageCoord]], a1_manager: A
         cleanup_stale()  
         
         # Optimize Segmentation settings
-        
+        server_settings = launch_tune_seg_gui(settings)
         
         # Initialize plate object
         plate = Plate(run_dir=run_dir, run_id=run_id, dish_grid=dish_grid)

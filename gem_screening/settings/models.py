@@ -1,8 +1,27 @@
 from pathlib import Path
-from typing import Any
-from pydantic import BaseModel, Field
+from typing import Any, Type, TypeVar
 import json
 
+from pydantic import BaseModel as PydanticBaseModel
+from pydantic import Field
+
+    
+T = TypeVar("T", bound="BaseModel")
+
+class BaseModel(PydanticBaseModel):
+    def to_json(self, file_path: Path) -> None:
+        """Save the model to a JSON file."""
+        from gem_screening.utils.serializers import CustomJSONEncoder
+        with open(file_path, 'w') as fp:
+            json.dump(self, fp, cls=CustomJSONEncoder, indent=2)
+
+    @classmethod
+    def from_json(cls: Type[T], file_path: Path) -> T:
+        """Load the model from a JSON file."""
+        from gem_screening.utils.serializers import custom_json_decoder
+        with open(file_path, 'r') as f:
+            data = json.load(f, object_hook=custom_json_decoder)
+        return data
 
 class LoggingSettings(BaseModel):
     """
@@ -233,26 +252,20 @@ class PipelineSettings(BaseModel):
     control_settings: ControlSettings
     stim_settings: StimSettings
     
-    def to_json(self, file_path: Path) -> None:
-        """
-        Save the PipelineSettings object to a JSON file.
-        Args:
-            file_path (Path): Path where the JSON file will be saved.
-        """
-        from gem_screening.utils.serializers import CustomJSONEncoder
-        with open(file_path, 'w') as fp:
-            json.dump(self, fp, cls=CustomJSONEncoder, indent=2)
+
+if __name__ == "__main__":
+    from pathlib import Path
     
-    @classmethod
-    def from_json(cls, file_path: Path) -> 'PipelineSettings':
-        """
-        Load a PipelineSettings object from a JSON file.
-        Args:
-            file_path (Path): Path to the JSON file.
-        Returns:
-            PipelineSettings: The loaded PipelineSettings object with all nested models properly reconstructed.
-        """
-        from gem_screening.utils.serializers import custom_json_decoder
-        with open(file_path, 'r') as f:
-            data = json.load(f, object_hook=custom_json_decoder)
-        return data
+    path = Path("/media/ben/Analysis/Python/Docker_mount/Test_images/tiff/Run3/settings.json")
+    
+    # Generate first the saved settings
+    settings = ServerSettings()
+    settings.to_json(path)
+    
+    # Load settings
+    loaded_settings = ServerSettings.from_json(path)
+
+    # Compare
+    print(settings == loaded_settings)
+    print(settings.to_backend_dict())
+    print(loaded_settings.to_backend_dict())# Should print True if all attributes are equal

@@ -12,7 +12,7 @@ from gem_screening.utils.client import FASTAPI_URL
 from gem_screening.utils.client.models import BackgroundPayload, ProcessPayload, build_payload
 from gem_screening.utils.filesystem import transform_path_for_container
 from gem_screening.utils.network import make_request_with_retry
-from gem_screening.settings.models import ServerSettings
+from gem_screening.settings.models import PipelineSettings, ServerSettings
 
 
 logger = logging.getLogger(__name__)
@@ -132,3 +132,18 @@ def _send_to_process(payload: ProcessPayload | BackgroundPayload) -> None:
         data = resp.text
     logger.debug(f"Enqueued process task(s): {data}")
 
+if __name__ == "__main__":
+    from tifffile import imread, imwrite
+    
+    settings = ServerSettings()
+    
+    
+    green_path = Path("/media/ben/Analysis/Python/Docker_mount/Test_images/tiff/Run3/c3z1t1v3s1_s1/Images/GFP_s01_f0001_z0001.tif")
+    red_path = Path("/media/ben/Analysis/Python/Docker_mount/Test_images/tiff/Run3/c3z1t1v3s1_s1/Images/RFP_s01_f0001_z0001.tif")
+    save_path = Path("/media/ben/Analysis/Python/Docker_mount/Test_images/tiff/Run3/mask.tif")
+    
+    img = imread(green_path)
+    
+    mask = optimise_segmentation(img, settings.to_backend_dict())
+    imwrite(save_path, mask)
+    

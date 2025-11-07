@@ -1,18 +1,46 @@
 import sys
+from typing import Optional
+import colorsys
+import ast
+import os
 
+from tifffile import imread
+from numpy.typing import NDArray
 import numpy as np
-from PyQt6.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, QLabel, 
-                             QPushButton, QSizePolicy, QFrame, QSlider, QCheckBox, QLineEdit, 
-                             QTextEdit, QGroupBox, QGridLayout, QComboBox)
+from PyQt6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, QLabel, QFileDialog, QPushButton, QSizePolicy, QFrame, QSlider, QCheckBox, QLineEdit, QTextEdit, QGroupBox, QGridLayout, QComboBox, QListWidget, QListWidgetItem
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
-from PyQt6.QtGui import QPixmap, QImage, QDoubleValidator, QIntValidator, QKeyEvent
+from PyQt6.QtGui import QPixmap, QImage, QDoubleValidator, QIntValidator, QKeyEvent, QFocusEvent
 
-from gem_screening.utils.client.service import cellpose_metadata_client
+from a1_manager import A1Manager, StageCoord
+from gem_screening.utils.client.service import cellpose_metadata_client, optimise_segmentation
+from gem_screening.settings.models import ServerSettings, PipelineSettings
+from gem_screening.tasks.tune_segmentation import ImageCollector
+
+
+
+class ExtraParamsTextEdit(QTextEdit):
+    """Custom QTextEdit that only processes text on focus out or Ctrl+Enter"""
+    params_changed = pyqtSignal()
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+    
+    def focusOutEvent(self, e: Optional[QFocusEvent]):
+        """Process text when focus is lost"""
+        super().focusOutEvent(e)
+        self.params_changed.emit()
+
+    def keyPressEvent(self, e: Optional[QKeyEvent]):
+        """Process text on Ctrl+Enter"""
+        super().keyPressEvent(e)
+        if e and e.key() == Qt.Key.Key_Return and e.modifiers() == Qt.KeyboardModifier.ControlModifier:
+            self.params_changed.emit()
 
 
 class TuneSegWidget(QWidget):
+    
     result_signal = pyqtSignal(str)
-    def __init__(self, img=None, mask=None, parent=None):
+    def __init__(self, settings: PipelineSettings, img: Optional[NDArray] = None, mask: Optional[NDArray] = None, dish_grid=None, a1_manager=None, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.image = img
         self.seg_mask = mask
@@ -24,16 +52,32 @@ class TuneSegWidget(QWidget):
         self.display_max = 65535
         self.brightness = 50  # 0-100
         self.contrast = 50    # 0-100
-        
+
+        # Extract ServerSettings from PipelineSettings
+        self.pipeline_settings = settings
+        self.settings = settings.server_settings
+        self.settings_path = None  # Not used anymore
+
+        # ImageCollector setup
+        self.image_collector = None
+        if dish_grid is not None and a1_manager is not None:
+            self.image_collector = ImageCollector(dish_grid, a1_manager, settings)
+
         # Initialize Cellpose metadata
         self.cellpose_metadata = self._get_cellpose_metadata()
-        
+
         self._setup_ui()
-        if img is not None and mask is not None:
-            self._create_mask_overlay()  # Pre-compute mask overlay
-            self._auto_scale()  # Auto-scale on launch
+        
+        # Priority: dish_grid over img
+        if self.image_collector is not None:
+            self._load_random_image()
         elif img is not None:
-            self._auto_scale()  # Auto-scale even without mask
+            self.image = img
+            self._auto_scale()
+            if mask is not None:
+                self._create_mask_overlay()
+            else:
+                self._run_segmentation_with_current_settings()
 
     def resizeEvent(self, a0):
         super().resizeEvent(a0)
@@ -130,7 +174,7 @@ class TuneSegWidget(QWidget):
         view_layout.addWidget(self.auto_scale_btn, 4, 0, 1, 3)
         
         # Mask overlay toggle
-        self.mask_overlay_cb = QCheckBox("Show mask overlay")
+        self.mask_overlay_cb = QCheckBox("Show mask overlay        (key shortcut 'x')")
         self.mask_overlay_cb.setChecked(True)
         self.mask_overlay_cb.toggled.connect(self._toggle_mask_overlay)
         view_layout.addWidget(self.mask_overlay_cb, 5, 0, 1, 3)
@@ -144,6 +188,58 @@ class TuneSegWidget(QWidget):
         title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         control_layout.addWidget(title_label)
         
+        # Load Image Group
+        load_group = QGroupBox("Load Image")
+        load_layout = QVBoxLayout(load_group)
+
+        # File loading section
+        file_section = QHBoxLayout()
+        
+        # Image path text area
+        self.image_path_edit = QLineEdit()
+        self.image_path_edit.setPlaceholderText("Paste image path and press Enter")
+        self.image_path_edit.setMinimumWidth(250)
+        self.image_path_edit.returnPressed.connect(self._on_image_path_entered)
+        file_section.addWidget(self.image_path_edit)
+
+        # Browse button
+        self.load_image_btn = QPushButton("Browse for Image...")
+        self.load_image_btn.clicked.connect(self._on_load_image)
+        file_section.addWidget(self.load_image_btn)
+
+        # Status label
+        self.loaded_image_path_label = QLabel("")
+        self.loaded_image_path_label.setWordWrap(True)
+        self.loaded_image_path_label.setStyleSheet("font-size: 10px; color: gray;")
+        file_section.addWidget(self.loaded_image_path_label)
+        
+        load_layout.addLayout(file_section)
+
+        # Coordinate history section (only shown if ImageCollector is available)
+        if self.image_collector is not None:
+            # History display
+            history_label = QLabel("Coordinate History:")
+            load_layout.addWidget(history_label)
+            
+            self.history_list = QListWidget()
+            self.history_list.setMaximumHeight(80)
+            load_layout.addWidget(self.history_list)
+            
+            # Buttons
+            buttons_layout = QHBoxLayout()
+            
+            self.load_selected_btn = QPushButton("Load Selected Coord")
+            self.load_selected_btn.clicked.connect(self._on_load_selected_coord)
+            buttons_layout.addWidget(self.load_selected_btn)
+            
+            self.random_img_btn = QPushButton("Random Image")
+            self.random_img_btn.clicked.connect(self._load_random_image)
+            buttons_layout.addWidget(self.random_img_btn)
+            
+            load_layout.addLayout(buttons_layout)
+
+        control_layout.addWidget(load_group)
+    
         # Segmentation Parameters Group
         seg_group = QGroupBox("Segmentation Parameters")
         seg_layout = QGridLayout(seg_group)
@@ -155,51 +251,73 @@ class TuneSegWidget(QWidget):
         self.model_combo = QComboBox()
         model_names = self.cellpose_metadata.get("model_names", ["cyto3"])
         self.model_combo.addItems(model_names)
-        # Set default to 'cyto3' if available
-        if "cyto3" in model_names:
+        # Set from settings or default to 'cyto3' if available
+        if self.settings.model_type in model_names:
+            self.model_combo.setCurrentText(self.settings.model_type)
+        elif "cyto3" in model_names:
             self.model_combo.setCurrentText("cyto3")
+        self.model_combo.currentTextChanged.connect(self._on_model_changed)
         seg_layout.addWidget(self.model_combo, 0, 1)
         
         # Diameter
         diameter_label = QLabel("Diameter:")
         seg_layout.addWidget(diameter_label, 1, 0)
-        self.diameter_edit = QLineEdit("40")
+        self.diameter_edit = QLineEdit(str(self.settings.diameter))
         self.diameter_edit.setValidator(QIntValidator(1, 1000))
         self.diameter_edit.setFixedWidth(60)
+        self.diameter_edit.textChanged.connect(self._on_diameter_changed)
         seg_layout.addWidget(self.diameter_edit, 1, 1)
         
         # Flow threshold
         flow_label = QLabel("Flow Threshold:")
         seg_layout.addWidget(flow_label, 2, 0)
-        self.flow_threshold_edit = QLineEdit("0.4")
+        self.flow_threshold_edit = QLineEdit(str(self.settings.flow_threshold))
         self.flow_threshold_edit.setValidator(QDoubleValidator(0.0, 10.0, 2))
         self.flow_threshold_edit.setFixedWidth(60)
+        self.flow_threshold_edit.textChanged.connect(self._on_flow_threshold_changed)
         seg_layout.addWidget(self.flow_threshold_edit, 2, 1)
         
         # Cellprob threshold
         cellprob_label = QLabel("Cellprob Threshold:")
         seg_layout.addWidget(cellprob_label, 3, 0)
-        self.cellprob_threshold_edit = QLineEdit("0.0")
+        self.cellprob_threshold_edit = QLineEdit(str(self.settings.cellprob_threshold))
         self.cellprob_threshold_edit.setValidator(QDoubleValidator(-10.0, 10.0, 2))
         self.cellprob_threshold_edit.setFixedWidth(60)
+        self.cellprob_threshold_edit.textChanged.connect(self._on_cellprob_threshold_changed)
         seg_layout.addWidget(self.cellprob_threshold_edit, 3, 1)
         
         # Extra parameters
         extra_label = QLabel("Extra Parameters:")
         seg_layout.addWidget(extra_label, 4, 0, 1, 2)
         
-        self.extra_params_edit = QTextEdit()
-        self.extra_params_edit.setPlaceholderText("Enter key=value pairs, one per line\nExample:\ndo_3D=True\nmin_size=15")
+        self.extra_params_edit = ExtraParamsTextEdit()
+        self.extra_params_edit.setPlaceholderText("Enter key=value pairs, one per line\nSupports: bool, int, float, str, dict, list\nExamples:\ndo_3D=True\nmin_size=15\nnorm={'a': 2, 'b': 6}\nchannels=[0, 1, 2]\nPress Ctrl+Enter or click elsewhere to save")
         self.extra_params_edit.setMaximumHeight(80)
+        self.extra_params_edit.params_changed.connect(self._on_extra_params_changed)
         seg_layout.addWidget(self.extra_params_edit, 5, 0, 1, 2)
         
         control_layout.addWidget(seg_group)
         
+        # Populate extra parameters text area with existing settings
+        self._populate_extra_params()
+        
+        # Run button
+        self.run_btn = QPushButton("Run Segmentation")
+        self.run_btn.clicked.connect(self._on_run_segmentation)
+        control_layout.addWidget(self.run_btn)
+
+        # Log display area
+        self.log_display = QTextEdit()
+        self.log_display.setReadOnly(True)
+        self.log_display.setMinimumHeight(60)
+        self.log_display.setStyleSheet("font-size: 11px; background: #f7f7f7; color: #333; border: 1px solid #ccc;")
+        control_layout.addWidget(self.log_display)
+
         # Quit button
         self.quit_btn = QPushButton("Quit")
         self.quit_btn.clicked.connect(lambda: self.result_signal.emit("quit"))
         control_layout.addWidget(self.quit_btn)
-        
+
         control_layout.addStretch()
 
         # Image display (right)
@@ -217,6 +335,66 @@ class TuneSegWidget(QWidget):
 
         layout.addWidget(control_panel, 1)
         layout.addWidget(image_panel, 3)
+
+    def _log(self, message: str) -> None:
+        """Append a message to the log display area."""
+        self.log_display.append(message)
+
+    def _update_history_display(self) -> None:
+        """Update the coordinate history display."""
+        if self.image_collector is None or not hasattr(self, 'history_list'):
+            return
+            
+        self.history_list.clear()
+        # Display coordinates as they come (not sorted)
+        for coord in self.image_collector.history:
+            # Display as xy tuple but keep full StageCoord
+            x, y = coord.xy
+            coord_text = f"({x:.1f}, {y:.1f})" if x is not None and y is not None else "Unknown"
+            item_widget = QListWidgetItem(coord_text)
+            item_widget.setData(1, coord)  # Store the full StageCoord as item data
+            self.history_list.addItem(item_widget)
+        
+        # Select the last entry by default
+        if self.history_list.count() > 0:
+            self.history_list.setCurrentRow(self.history_list.count() - 1)
+
+    def _load_random_image(self) -> None:
+        """Load a random image using ImageCollector."""
+        if self.image_collector is None:
+            self._log("No ImageCollector available")
+            return
+            
+        try:
+            self.image = self.image_collector.get_image()
+            self._update_history_display()
+            self._auto_scale()
+            self._run_segmentation_with_current_settings()
+            self._log("Random image loaded successfully")
+        except Exception as e:
+            self._log(f"Failed to load random image: {str(e)}")
+
+    def _on_load_selected_coord(self) -> None:
+        """Load image from selected coordinate."""
+        if self.image_collector is None or not hasattr(self, 'history_list'):
+            self._log("No ImageCollector or history available")
+            return
+            
+        current_item = self.history_list.currentItem()
+        if current_item is None:
+            self._log("No coordinate selected")
+            return
+            
+        try:
+            coord = current_item.data(1)  # Get the stored StageCoord
+            self.image = self.image_collector.get_image(coord)
+            self._update_history_display()
+            self._auto_scale()
+            self._run_segmentation_with_current_settings()
+            x, y = coord.xy
+            self._log(f"Loaded image from coordinate ({x:.1f}, {y:.1f})")
+        except Exception as e:
+            self._log(f"Failed to load selected coordinate: {str(e)}")
 
     def _get_cellpose_metadata(self):
         """Retrieve Cellpose metadata from server"""
@@ -250,7 +428,6 @@ class TuneSegWidget(QWidget):
         overlay = np.zeros((h, w, 3), dtype=np.uint8)
         
         # Generate distinct colors using HSV color space
-        import colorsys
         colors = []
         for i in range(len(unique_masks)):
             hue = (i * 137.5) % 360  # Golden angle for good distribution
@@ -292,6 +469,32 @@ class TuneSegWidget(QWidget):
         # Update display
         self._update_image_display()
     
+    def _on_image_path_entered(self):
+        """Load image when user pastes path and presses Enter"""
+        img_path = self.image_path_edit.text().strip()
+        if not img_path:
+            self._log("No path entered.")
+            self.loaded_image_path_label.setText("")
+            return
+        if not os.path.exists(img_path):
+            self._log(f"File not found: {os.path.basename(img_path)}")
+            self.loaded_image_path_label.setText("")
+            return
+        try:
+            img = imread(img_path)
+            self.image = img
+            self.seg_mask = None
+            self.mask_overlay_rgb = None
+            self._create_mask_overlay()
+            self._auto_scale()
+            self._log(f"Loaded: {os.path.basename(img_path)}")
+            self.loaded_image_path_label.setText("")
+            self.image_path_edit.setText(img_path)
+            self._run_segmentation_with_current_settings()
+        except Exception as e:
+            self._log(f"Error loading image: {str(e)}")
+            self.loaded_image_path_label.setText("")
+    
     def _auto_scale(self):
         """Auto-scale display based on image percentiles (like ImageJ auto-scale)"""
         if self.image is not None:
@@ -317,13 +520,194 @@ class TuneSegWidget(QWidget):
         self.show_mask_overlay = checked
         self._update_image_display()
     
+    def _on_model_changed(self, text):
+        """Handle model selection change"""
+        self.settings.model_type = text
+        self._save_settings()
+    
+    def _on_diameter_changed(self, text):
+        """Handle diameter change"""
+        if text:
+            try:
+                self.settings.diameter = int(text)
+                self._save_settings()
+            except ValueError:
+                pass  # Keep previous value if invalid
+    
+    def _on_flow_threshold_changed(self, text):
+        """Handle flow threshold change"""
+        if text:
+            try:
+                self.settings.flow_threshold = float(text)
+                self._save_settings()
+            except ValueError:
+                pass  # Keep previous value if invalid
+    
+    def _on_cellprob_threshold_changed(self, text):
+        """Handle cellprob threshold change"""
+        if text:
+            try:
+                self.settings.cellprob_threshold = float(text)
+                self._save_settings()
+            except ValueError:
+                pass  # Keep previous value if invalid
+    
+    def _on_extra_params_changed(self):
+        """Handle extra parameters change"""
+        self._parse_and_save_extra_params()
+    
+    def _populate_extra_params(self):
+        """Populate the extra parameters text area with existing settings"""
+        if self.settings.extra_settings:
+            lines = []
+            for key, value in self.settings.extra_settings.items():
+                # Format complex types properly
+                if isinstance(value, (dict, list, tuple)):
+                    # Use repr() to get proper Python representation
+                    formatted_value = repr(value)
+                else:
+                    formatted_value = str(value)
+                lines.append(f"{key}={formatted_value}")
+            self.extra_params_edit.setPlainText("\n".join(lines))
+    
+    def _parse_and_save_extra_params(self):
+        """Parse extra parameters from text area and save to settings"""
+        extra_text = self.extra_params_edit.toPlainText().strip()
+        extra_params = {}
+        
+        if extra_text:
+            for _, line in enumerate(extra_text.split('\n'), 1):
+                line = line.strip()
+                if not line:  # Skip empty lines
+                    continue
+                    
+                if '=' in line:
+                    key, value = line.split('=', 1)
+                    key = key.strip()
+                    value = value.strip()
+                    
+                    if not key:  # Skip lines with empty keys
+                        continue
+                    
+                    # Try to evaluate as Python literal first (handles dict, list, tuple, etc.)
+                    try:
+                        # Use ast.literal_eval for safe evaluation of Python literals
+                        parsed_value = ast.literal_eval(value)
+                        extra_params[key] = parsed_value
+                    except (ValueError, SyntaxError):
+                        # If literal_eval fails, try simple type conversions
+                        try:
+                            if value.lower() in ('true', 'false'):
+                                extra_params[key] = value.lower() == 'true'
+                            elif value.replace('.', '').replace('-', '').isdigit():
+                                if '.' in value:
+                                    extra_params[key] = float(value)
+                                else:
+                                    extra_params[key] = int(value)
+                            else:
+                                extra_params[key] = value  # Keep as string
+                        except ValueError:
+                            extra_params[key] = value  # Keep as string if all conversions fail
+        
+        self.settings.extra_settings = extra_params
+        self._save_settings()
+    
+    def _save_settings(self) -> None:
+        pass  # No file saving, settings object is updated in-place
+    
+    def _run_segmentation_with_current_settings(self) -> None:
+        """Run segmentation on self.image using current settings and update mask/display."""
+        if self.image is None:
+            self._log("No image loaded! Please load an image first.")
+            return
+        try:
+            # Ensure extra parameters are up to date
+            self._parse_and_save_extra_params()
+            cellpose_settings = self.settings.to_backend_dict()
+            mask = optimise_segmentation(self.image, cellpose_settings)
+            self.seg_mask = mask
+            self._create_mask_overlay()
+            self._update_image_display()
+            self._log("Segmentation completed successfully!")
+        except Exception as e:
+            self._log(f"Segmentation failed: {str(e)}")
+            print(f"Segmentation error: {e}")
+    
+    def _on_run_segmentation(self):
+        """Run segmentation on the current image using current settings"""
+        # Update the run button to show it's processing
+        self.run_btn.setText("Running...")
+        self.run_btn.setEnabled(False)
+        QApplication.processEvents()
+        self._run_segmentation_with_current_settings()
+        # Reset the run button
+        self.run_btn.setText("Run Segmentation")
+        self.run_btn.setEnabled(True)
+    
+    def _on_load_image(self):
+        """Handle loading an image from the file system"""
+        file_dialog = QFileDialog(self)
+        file_dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
+        file_dialog.setNameFilters([
+            "Image files (*.tif *.tiff *.png *.jpg *.jpeg *.bmp *.nd2)",
+            "TIFF files (*.tif *.tiff)",
+            "ND2 files (*.nd2)",
+            "All files (*)"
+        ])
+        if file_dialog.exec():
+            selected_files = file_dialog.selectedFiles()
+            if selected_files:
+                img_path = selected_files[0]
+                self._log(f"Loading: {os.path.basename(img_path)}")
+                self.loaded_image_path_label.setText("")
+                self.image_path_edit.setText(img_path)
+                try:
+                    img = imread(img_path)
+                    self.image = img
+                    self.seg_mask = None  # Clear any existing mask
+                    self.mask_overlay_rgb = None  # Clear overlay
+                    self._create_mask_overlay()
+                    self._auto_scale()
+                    self._log(f"Loaded: {os.path.basename(img_path)}")
+                    self._run_segmentation_with_current_settings()
+                except Exception as e:
+                    try:
+                        # Fallback to QImage for standard formats
+                        qimg = QImage(img_path)
+                        if not qimg.isNull():
+                            img = self._qimage_to_numpy(qimg)
+                            self.image = img
+                            self.seg_mask = None
+                            self.mask_overlay_rgb = None
+                            self._create_mask_overlay()
+                            self._auto_scale()
+                            self._log(f"Loaded: {os.path.basename(img_path)}")
+                            self._run_segmentation_with_current_settings()
+                        else:
+                            self._log(f"Failed to load: {os.path.basename(img_path)}")
+                    except Exception as e2:
+                        self._log(f"Error: {str(e)}")
+    
+    def _qimage_to_numpy(self, qimg):
+        """Convert QImage to numpy array (for fallback image loading)"""
+        # Convert to RGB format
+        qimg = qimg.convertToFormat(QImage.Format.Format_RGB888)
+        width = qimg.width()
+        height = qimg.height()
+        ptr = qimg.bits()
+        ptr.setsize(qimg.byteCount())
+        arr = np.array(ptr, dtype=np.uint8).reshape((height, width, 3))
+        # Convert to grayscale for consistency with typical microscopy images
+        gray = np.dot(arr[...,:3], [0.2989, 0.5870, 0.1140])
+        return gray.astype(np.uint16) * 257  # Scale to 16-bit range
+    
     def get_segmentation_params(self):
-        """Get segmentation parameters from the control panel"""
+        """Get segmentation parameters from the control panel (legacy method)"""
         params = {
-            'model_type': self.model_combo.currentText(),
-            'diameter': int(self.diameter_edit.text()) if self.diameter_edit.text() else 40,
-            'flow_threshold': float(self.flow_threshold_edit.text()),
-            'cellprob_threshold': float(self.cellprob_threshold_edit.text())
+            'model_type': self.settings.model_type,
+            'diameter': self.settings.diameter,
+            'flow_threshold': self.settings.flow_threshold,
+            'cellprob_threshold': self.settings.cellprob_threshold
         }
         
         # Parse extra parameters
@@ -346,6 +730,13 @@ class TuneSegWidget(QWidget):
                         params[key] = value  # Keep as string if conversion fails
         
         return params
+    
+    def get_settings(self):
+        """Get the ServerSettings object with current values"""
+        # Extra parameters are already parsed and saved in real-time
+        # Just ensure they're up to date
+        self._parse_and_save_extra_params()
+        return self.settings
 
     def _convert_to_pixmap(self, img_array):
         """Convert numpy array to QPixmap"""
@@ -420,32 +811,74 @@ class TuneSegWidget(QWidget):
                 self.image_label.setText("No image available")
 
 class TuneSegWindow(QMainWindow):
-    def __init__(self, img=None, mask=None):
+    def __init__(self, settings: PipelineSettings, img: Optional[NDArray] = None, mask: Optional[NDArray] = None, dish_grid=None, a1_manager=None):
         super().__init__()
-        self.widget = TuneSegWidget(img, mask)
+        self.widget = TuneSegWidget(settings, img, mask, dish_grid, a1_manager)
         self.setCentralWidget(self.widget)
         self.setWindowTitle("Segmentation Tuning")
         self.setMinimumSize(600, 400)
         self.resize(1800, 1400)
         self.widget.result_signal.connect(self._handle_result)
         self.result = None
+        self.settings = None
 
-    def _handle_result(self, result):
+    def _handle_result(self, result: str) -> None:
         self.result = result
+        if result == "quit":
+            # Get the updated server settings when quit is pressed
+            self.settings = self.widget.get_settings()
         self.close()
 
-    def closeEvent(self, a0):
+    def closeEvent(self, a0) -> None:
         if a0 is not None:
             a0.accept()
 
 
+def launch_tune_seg_gui(settings: PipelineSettings, img: Optional[NDArray] = None, mask: Optional[NDArray] = None, dish_grid: dict[str, dict[int, StageCoord]] | None =None, a1_manager: A1Manager | None = None) -> ServerSettings | None:
+    """
+    Launch the segmentation tuning GUI.
+    
+    Args:
+        settings: PipelineSettings object containing ServerSettings to be updated
+        img: Optional numpy array of the image
+        mask: Optional numpy array of the mask
+        dish_grid: Optional dish grid for ImageCollector
+        a1_manager: Optional A1Manager for ImageCollector
+    Returns:
+        Updated ServerSettings object
+    """
+    app = QApplication(sys.argv)
+    window = TuneSegWindow(settings, img, mask, dish_grid, a1_manager)
+    window.show()
+    app.exec()
+    return window.settings
+
+
 # Example usage for testing GUI frame
 if __name__ == "__main__":
-    from tifffile import imread
-    # Dummy image and mask arrays
-    img = imread("/media/ben/Analysis/Python/Docker_mount/Test_images/nd2/Run4/c4z1t91v1_s1/Images_Registered/GFP_s01_f0001_z0001.tif")
-    mask = imread("/media/ben/Analysis/Python/Docker_mount/Test_images/nd2/Run4/c4z1t91v1_s1/Masks_Cellpose/GFP_s01_f0001_z0001.tif")
-    app = QApplication(sys.argv)
-    window = TuneSegWindow(img, mask)
-    window.show()
-    sys.exit(app.exec())
+    from pathlib import Path
+    from gem_screening.settings.models import LoggingSettings, AcquisitionSettings, DishSettings, MeasureSettings, ControlSettings, StimSettings
+    
+    # Create a default PipelineSettings object for testing
+    pipeline_settings = PipelineSettings(
+        savedir="/tmp",
+        savedir_name="test",
+        logging_settings=LoggingSettings(),
+        acquisition_settings=AcquisitionSettings(),
+        dish_settings=DishSettings(),
+        measure_settings=MeasureSettings(),
+        server_settings=ServerSettings(),
+        control_settings=ControlSettings(),
+        stim_settings=StimSettings()
+    )
+    
+    print("\nOriginal Server Settings:")
+    print(pipeline_settings.server_settings.model_dump())
+    
+    img_path = Path("/media/ben/Analysis/Python/CellTinder/ImagesTest/A1/A1_images/A1_P4_refseg_1.tif")
+    img = imread(img_path) if img_path.exists() else None
+
+    updated_settings = launch_tune_seg_gui(pipeline_settings, img=img)
+    if updated_settings:
+        print("\nUpdated Server Settings:")
+        print(updated_settings.model_dump())
