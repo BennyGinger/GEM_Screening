@@ -51,10 +51,41 @@ def scan_round2(a1_manager: A1Manager, settings: PipelineSettings, well_list: li
     # Wait for all images to be processed
     well_ids = [w.well_id for w in well_list]
     wait_for_completion(well_ids, timeout=settings.server_settings.server_timeout_sec)
+        
+def after_scan(a1_manager: A1Manager, settings: PipelineSettings, plate_obj: Plate) -> None:
+    """ 
+    Run the analysis and illumination workflow after scanning is complete.
+    This function handles cell selection and illumination for wells where both 
+    round 1 and round 2 imaging have been completed.
     
-    assign_masks_to_fovs(well_list)
+    Args:
+        a1_manager (A1Manager): The A1Manager instance to control the microscope hardware.
+        settings (PipelineSettings): The settings for the pipeline, including acquisition settings, dish settings, and save directory.
+        plate_obj (Plate): The plate object containing the wells to process.
+    """
+    _cell_selection(settings, plate_obj)
 
-def illuminate(a1_manager: A1Manager, settings: PipelineSettings, plate_obj: Plate) -> None:
+    # _illuminate(a1_manager, settings, plate_obj)
+    
+    logger.info(f"Completed processing for well: {plate_obj.wells}")
+
+################## Helper Functions ##################
+def _cell_selection(settings: PipelineSettings, plate_obj: Plate) -> None:
+    """
+    Select cells in the well object for further processing, using CellTinder.
+    """
+    assign_masks_to_fovs(plate_obj)
+                        
+    stim_sets = settings.stim_settings
+                        
+    extract_measure_intensities(plate_obj.positive_fovs,
+                                true_cell_threshold=stim_sets.true_cell_threshold,
+                                csv_path=plate_obj.csv_path)
+
+    if _is_csv_ready_for_processing(plate_obj):
+        run_celltinder(plate_obj.csv_path, crop_size=stim_sets.crop_size)
+
+def _illuminate(a1_manager: A1Manager, settings: PipelineSettings, plate_obj: Plate) -> None:
     """
     Illuminate the cells in the well object.
     """
