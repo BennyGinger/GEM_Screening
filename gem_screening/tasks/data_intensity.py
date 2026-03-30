@@ -7,7 +7,7 @@ import pandas as pd
 from skimage.measure import regionprops_table
 from progress_bar import run_parallel as parallel_progress_bar
 
-from gem_screening.utils.pipeline_constants import AFTER_STIM, BEFORE_STIM, CELL_ID, CELL_LABEL, CENTROID_X, CENTROID_Y, CONTROL_LABEL, FOV_ID, FOV_X, FOV_Y, MASK_LABEL, POST_ILLUMINATION, PRE_ILLUMINATION, RATIO, STIM_LABEL, MEASURE_LABEL
+from gem_screening.utils.pipeline_constants import AFTER_STIM, BEFORE_STIM, CELL_ID, CELL_LABEL, CENTROID_X, CENTROID_Y, CONTROL_LABEL, FOV_CELLSORTER_X, FOV_CELLSORTER_Y, FOV_ID, FOV_X, FOV_Y, MASK_LABEL, POST_ILLUMINATION, PRE_ILLUMINATION, RATIO, STIM_LABEL, MEASURE_LABEL
 from gem_screening.well_data.well_classes import FieldOfView
 
 
@@ -166,8 +166,19 @@ def _create_regionprops(fov: FieldOfView, true_cell_threshold: int) -> pd.DataFr
     df[AFTER_STIM] = df[AFTER_STIM].where(df[AFTER_STIM] >= true_cell_threshold, 0)
     # Add the FOV ID and coordinates
     fx, fy = fov.fov_coord.xy
-    df[FOV_Y] = fy
-    df[FOV_X] = fx
+    fx_val = float(fx) if fx is not None else np.nan
+    fy_val = float(fy) if fy is not None else np.nan
+    df[FOV_Y] = fy_val
+    df[FOV_X] = fx_val
+
+    # Convert centroid pixels into centered offsets from the FOV center,
+    # then project those offsets onto the stage/cellsorter coordinates.
+    img_shape = fov.load_images(MEASURE_LABEL)[0].shape
+    center_y = (img_shape[0] - 1) / 2.0
+    center_x = (img_shape[1] - 1) / 2.0
+    df[FOV_CELLSORTER_Y] = fy_val + (df[CENTROID_Y] - center_y)
+    df[FOV_CELLSORTER_X] = fx_val + (df[CENTROID_X] - center_x)
+
     # Generate the cell ID
     df[FOV_ID] = fov.fov_id
     df[CELL_ID] = [f"{fov.fov_id}C{cell}" for cell in df[CELL_LABEL]]
