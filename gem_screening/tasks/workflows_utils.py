@@ -51,30 +51,13 @@ def scan_round2(a1_manager: A1Manager, settings: PipelineSettings, well_list: li
     # Wait for all images to be processed
     well_ids = [w.well_id for w in well_list]
     wait_for_completion(well_ids, timeout=settings.server_settings.server_timeout_sec)
-        
-def after_scan(a1_manager: A1Manager, settings: PipelineSettings, plate_obj: Plate) -> None:
-    """ 
-    Run the analysis and illumination workflow after scanning is complete.
-    This function handles cell selection and illumination for wells where both 
-    round 1 and round 2 imaging have been completed.
     
-    Args:
-        a1_manager (A1Manager): The A1Manager instance to control the microscope hardware.
-        settings (PipelineSettings): The settings for the pipeline, including acquisition settings, dish settings, and save directory.
-        plate_obj (Plate): The plate object containing the wells to process.
-    """
-    _cell_selection(settings, plate_obj)
 
-    # _illuminate(a1_manager, settings, plate_obj)
-    
-    logger.info(f"Completed processing for well: {plate_obj.wells}")
-
-################## Helper Functions ##################
-def _cell_selection(settings: PipelineSettings, plate_obj: Plate) -> None:
+def cell_selection(settings: PipelineSettings, plate_obj: Plate) -> None:
     """
     Select cells in the well object for further processing, using CellTinder.
     """
-    assign_masks_to_fovs(plate_obj)
+    assign_masks_to_fovs(plate_obj.well_list)
                         
     stim_sets = settings.stim_settings
                         
@@ -85,7 +68,8 @@ def _cell_selection(settings: PipelineSettings, plate_obj: Plate) -> None:
     if _is_csv_ready_for_processing(plate_obj):
         run_celltinder(plate_obj.csv_path, crop_size=stim_sets.crop_size)
 
-def _illuminate(a1_manager: A1Manager, settings: PipelineSettings, plate_obj: Plate) -> None:
+
+def illuminate(a1_manager: A1Manager, settings: PipelineSettings, plate_obj: Plate) -> None:
     """
     Illuminate the cells in the well object.
     """
@@ -101,3 +85,24 @@ def _illuminate(a1_manager: A1Manager, settings: PipelineSettings, plate_obj: Pl
 
     update_control_intensities(plate_obj.positive_fovs, csv_path=plate_obj.csv_path)
 
+################## Helper Functions ##################
+def _is_csv_ready_for_processing(plate_obj: Plate) -> bool:
+    """ 
+    Check if the CSV file contains any cells marked for processing.
+    If the CSV file does not exist or cannot be read, return True to indicate that CellTinder should be run.
+    Args:
+        plate_obj (Plate): List of Well object to check.
+    Returns:
+        bool: True if CellTinder should be run, False otherwise.
+    """
+    try:
+        df = pd.read_csv(plate_obj.csv_path)
+        if 'process' in df.columns and df['process'].any():
+            logger.info(f"CSV exists with {df['process'].sum()} cells to process - skipping CellTinder")
+            return False  # CSV has already selected cells, skip CellTinder
+        else:
+            logger.info("CSV exists but no processed cells found - will run CellTinder")
+            return True  # CSV exists but no processed cells
+    except Exception as e:
+        logger.warning(f"Error reading CSV {plate_obj.csv_path}: {e}. Will run CellTinder")
+        return True  # Error reading CSV, safer to run CellTinder
