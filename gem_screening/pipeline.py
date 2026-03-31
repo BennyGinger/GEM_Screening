@@ -31,7 +31,7 @@ def complete_pipeline(settings: PipelineSettings) -> None:
     
     try:
         # Generate the dish_grid
-        dish_grid, dish_map = launch_dish_workflow(a1_manager, run_dir, **settings.dish_settings.model_dump())
+        dish_grid = launch_dish_workflow(a1_manager, run_dir, **settings.dish_settings.model_dump())
         logger.info(f"Generated dish grid")
         logger.debug(f"dish_grid: {dish_grid}")
     except QuitAutofocus:
@@ -41,7 +41,7 @@ def complete_pipeline(settings: PipelineSettings) -> None:
     # Run the pipeline workflow, lazy import to ensure all environment variables are set before importing
     from gem_screening.tasks.workflows import run_complete_flow
     try:
-        run_complete_flow(dish_grid, dish_map, a1_manager, run_dir, run_id, settings)
+        run_complete_flow(dish_grid, a1_manager, run_dir, run_id, settings)
     except PipelineQuit:
         logger.info("User chose to quit during pipeline execution. Stopping pipeline.")
         return

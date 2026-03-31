@@ -1,18 +1,21 @@
 import logging
 
-import pandas as pd
+from a1_manager.utils.utility_classes import StageCoord
 from a1_manager import A1Manager
 from progress_bar import setup_progress_monitor as progress_bar
 
-from gem_screening.tasks.data_intensity import extract_measure_intensities, update_control_intensities
+from gem_screening.tasks.injection import init_injection
+from gem_screening.tasks.workflows import _get_identifier
+from gem_screening.utils.prompt_gui import PipelineQuit
+from gem_screening.utils.prompts import get_ligand_prompt, prompt_to_continue
+from gem_screening.tasks.data_intensity import update_control_intensities
 from gem_screening.tasks.image_capture import image_fovs
 from gem_screening.tasks.light_stimulation import create_stim_masks, illuminate_fovs
-from gem_screening.tasks.mask_utils import assign_masks_to_fovs
 from gem_screening.utils.client.progress import wait_for_completion
-from gem_screening.utils.external import run_celltinder
 from gem_screening.utils.pipeline_constants import MEASURE_LABEL
 from gem_screening.settings.models import PipelineSettings
 from gem_screening.well_data.well_classes import Plate, Well
+
 
 
 logger = logging.getLogger(__name__)
@@ -53,22 +56,6 @@ def scan_round2(a1_manager: A1Manager, settings: PipelineSettings, well_list: li
     wait_for_completion(well_ids, timeout=settings.server_settings.server_timeout_sec)
     
 
-def cell_selection(settings: PipelineSettings, plate_obj: Plate) -> None:
-    """
-    Select cells in the well object for further processing, using CellTinder.
-    """
-    assign_masks_to_fovs(plate_obj.well_list)
-                        
-    stim_sets = settings.stim_settings
-                        
-    extract_measure_intensities(plate_obj.positive_fovs,
-                                true_cell_threshold=stim_sets.true_cell_threshold,
-                                csv_path=plate_obj.csv_path)
-
-    if _is_csv_ready_for_processing(plate_obj):
-        run_celltinder(plate_obj.csv_path, crop_size=stim_sets.crop_size)
-
-
 def illuminate(a1_manager: A1Manager, settings: PipelineSettings, plate_obj: Plate) -> None:
     """
     Illuminate the cells in the well object.
@@ -85,24 +72,54 @@ def illuminate(a1_manager: A1Manager, settings: PipelineSettings, plate_obj: Pla
 
     update_control_intensities(plate_obj.positive_fovs, csv_path=plate_obj.csv_path)
 
-################## Helper Functions ##################
-def _is_csv_ready_for_processing(plate_obj: Plate) -> bool:
-    """ 
-    Check if the CSV file contains any cells marked for processing.
-    If the CSV file does not exist or cannot be read, return True to indicate that CellTinder should be run.
-    Args:
-        plate_obj (Plate): List of Well object to check.
-    Returns:
-        bool: True if CellTinder should be run, False otherwise.
+
+def ligand_stimulation(a1_manager: A1Manager, settings: PipelineSettings, well_list: list[Well], list_type: str) -> None:
     """
-    try:
-        df = pd.read_csv(plate_obj.csv_path)
-        if 'process' in df.columns and df['process'].any():
-            logger.info(f"CSV exists with {df['process'].sum()} cells to process - skipping CellTinder")
-            return False  # CSV has already selected cells, skip CellTinder
-        else:
-            logger.info("CSV exists but no processed cells found - will run CellTinder")
-            return True  # CSV exists but no processed cells
-    except Exception as e:
-        logger.warning(f"Error reading CSV {plate_obj.csv_path}: {e}. Will run CellTinder")
-        return True  # Error reading CSV, safer to run CellTinder
+    Run the ligand stimulation part of the workflow, which includes either prompting the user to perform manual ligand addition or performing automated injection based on the settings.
+    Args:
+        a1_manager (A1Manager): The A1Manager instance to control the microscope hardware.
+        settings (PipelineSettings): The settings for the pipeline, including acquisition settings, dish settings, and injection settings.
+        well_list (list[Well]): List of well objects to process for ligand stimulation.
+        list_type (str): The type of grouping for the wells, either 'row' or 'col', used for generating the appropriate prompt message for manual ligand addition.
+        dish_map (dict[str, WellCircleCoord | WellSquareCoord]): A mapping of well names to their corresponding coordinates, used for automated injection to move the stage to the correct position for ligand addition.
+    
+    Raises:
+        PipelineQuit: If the user chooses to quit during the manual ligand addition prompt.
+    """
+    
+    center_points: list[StageCoord] = []
+    for well in well_list:
+        center = well.well_grid[max(well.well_grid)]
+        center_points.append(center)
+    
+    if not center_points:
+        logger.warning("No valid center points found in dish map for ligand stimulation.")
+        return
+    
+    if settings.injection_settings.enabled:
+        logger.info("Automated injection is enabled. Starting automated ligand stimulation.")
+        device_name = settings.injection_settings.injection_device
+        needle_size = settings.injection_settings.needle_size
+        pressure = settings.injection_settings.pressure
+        injec_vol_ul = settings.injection_settings.inject_vol_ul
+        inject_time_ms = settings.injection_settings.inject_time_ms
+        mixing_cycles = settings.injection_settings.mixing_cycles
+        pick = init_injection(a1_manager.core, settings.dish_name, device_name, needle_size, pressure) # type: ignore
+        
+        for coord in center_points:
+            # move the stage
+            a1_manager.set_stage_position(coord)
+            
+            # perform the injection
+            pick.inject(injec_vol_ul, inject_time_ms, mixing_cycles)
+        
+    else:
+        logger.info("Automated injection is disabled in settings. Please perform the ligand addition manually.") 
+        try:
+            prompt_message = get_ligand_prompt(list_type)
+            identifier = _get_identifier(well_list, list_type)
+            prompt = prompt_message + identifier if identifier else prompt_message
+            prompt_to_continue(prompt)
+        except PipelineQuit:
+            raise
+    

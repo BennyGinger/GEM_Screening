@@ -223,7 +223,28 @@ class ServerSettings(BaseModel, extra='allow'):
         backend_dict = self.model_dump(exclude={'server_timeout_sec', 'well_id', 'dst_folder', 'total_fovs', 'extra_settings'})
         backend_dict.update(self.extra_settings)
         return backend_dict
-    
+
+
+class InjectionSettings(BaseModel):
+    """
+    Pydantic model for Settings for the injection device used in the ligand stimulation process.
+    Attributes:
+        enabled (bool, optional): If True, will perform automated injection. If False, the injection step will be manual. Defaults to True.
+        injection_device (str, optional): Type of injection device, either 'nanopick' for nanopick head control or 'quickpick' for quickpick valve control. Defaults to 'quickpick'.
+        needle_size (int | None, optional): Needle size for quickpick valve control, i.e., 30, 50 or 70. Required if injection_device is 'quickpick'. Defaults to 50.
+        pressure (float | None, optional): Pressure value (bar) for quickpick valve control. Required if injection_device is 'quickpick'. Defaults to 0.3.
+        inject_vol_ul (float, optional): Volume to inject in microliters. Defaults to 10.0.
+        inject_time_ms (float | None, optional): Injection time in milliseconds, only needed for nanopick head control. Defaults to None.
+        mixing_cycles (int, optional): Number of mixing cycles during injection, default is 1 (meaning there is no mixing). Defaults to 3.
+    """
+    enabled: bool = True
+    injection_device: str = 'quickpick'
+    needle_size: int | None = 50
+    pressure: float | None = 0.3
+    inject_vol_ul: float = 10.0
+    inject_time_ms: float | None = None
+    mixing_cycles: int = 3
+
 class PipelineSettings(BaseModel):
     """
     Pydantic model for Settings for the entire imaging pipeline.
@@ -248,9 +269,15 @@ class PipelineSettings(BaseModel):
     acquisition_settings: AcquisitionSettings
     dish_settings: DishSettings
     measure_settings: MeasureSettings
+    injection_settings: InjectionSettings
     server_settings: ServerSettings
     control_settings: ControlSettings
     stim_settings: StimSettings
+    
+    @property
+    def dish_name(self) -> str:
+        """Convenience property to access the dish name directly from the pipeline settings."""
+        return self.dish_settings.dish_name
     
 
 if __name__ == "__main__":

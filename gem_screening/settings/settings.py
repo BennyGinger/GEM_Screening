@@ -1,4 +1,4 @@
-from gem_screening.settings.models import AcquisitionSettings, DishSettings, PresetMeasure, PresetControl, PresetStim, ServerSettings, PresetRefseg, MeasureSettings, ControlSettings, StimSettings, PipelineSettings, LoggingSettings
+from gem_screening.settings.models import AcquisitionSettings, DishSettings, PresetMeasure, PresetControl, PresetStim, ServerSettings, PresetRefseg, MeasureSettings, ControlSettings, StimSettings, PipelineSettings, LoggingSettings, InjectionSettings
 
 # Folder where the experiment folder will be created
 savedir = r'D:\Ben'
@@ -32,6 +32,16 @@ measure_sets = MeasureSettings(
                     preset_refseg=PresetRefseg(
                                     optical_configuration='iRed',
                                     intensity=5))
+
+# Settings for the automated injection
+injection_sets = InjectionSettings(
+                    enabled=True, # whether to perform automated injection or not, if False, the injection step will be manual 
+                    injection_device='quickpick',
+                    needle_size=50, # in microns, only needed for quickpick head control
+                    pressure=0.3, # in bar, only needed for quickpick head control
+                    inject_vol_ul=10, # in microliters, for both injection devices
+                    inject_time_ms=None, # in milliseconds, only needed for nanopick head control
+                    mixing_cycles=3) # number of mixing cycles during injection
 
 # Settings for the segmentation and tracking server
 server_sets = ServerSettings(
@@ -67,6 +77,7 @@ full_settings = PipelineSettings(
     acquisition_settings=aqui_sets,
     dish_settings=dish_sets,
     measure_settings=measure_sets,
+    injection_settings=injection_sets,
     server_settings=server_sets,
     control_settings=control_sets,
     stim_settings=stim_sets)
