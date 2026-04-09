@@ -4,7 +4,7 @@ from gem_screening.settings.models import AcquisitionSettings, DishSettings, Pre
 savedir = r'D:\Ben'
 
 # Name for the experiment folder, timestamp will be added as prefix
-savedir_name = 'test_pipeline'
+savedir_name = 'lib66-5KETE-red-Selection'
 # Aquisition settings for the microscope
 aqui_sets = AcquisitionSettings(
                     objective='20x',)
@@ -19,14 +19,14 @@ dish_sets = DishSettings(
                     overwrite_autofocus=False,
                     overwrite_calib=False,
                     # numb_field_view=1,
-                    numb_field_view=3,
+                    numb_field_view=None,
                     dmd_window_only=False,
                     )
 
 # Preset settings for imaging for measurement
 measure_sets = MeasureSettings(
                     preset_measure=PresetMeasure(
-                                    optical_configuration='GFP',
+                                    optical_configuration='RFP',
                                     intensity=25),
                     do_refseg=True,
                     preset_refseg=PresetRefseg(
@@ -35,7 +35,7 @@ measure_sets = MeasureSettings(
 
 # Settings for the automated injection
 injection_sets = InjectionSettings(
-                    enabled=True, # whether to perform automated injection or not, if False, the injection step will be manual 
+                    enabled=False, # whether to perform automated injection or not, if False, the injection step will be manual 
                     injection_device='quickpick',
                     needle_size=50, # in microns, only needed for quickpick head control
                     pressure=0.3, # in bar, only needed for quickpick head control
@@ -51,7 +51,7 @@ server_sets = ServerSettings(
 
 # Preset settings for control imaging before and after light stimulation
 control_sets = ControlSettings(
-                    control_loop=True,
+                    control_loop=False,
                     preset=PresetControl(
                                     optical_configuration='RFP',
                                     intensity=40))

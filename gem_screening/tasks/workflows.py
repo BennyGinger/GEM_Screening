@@ -8,7 +8,7 @@ from gem_screening.tasks.data_intensity import extract_measure_intensities
 from gem_screening.tasks.image_capture import image_fovs
 from gem_screening.tasks.mask_utils import assign_masks_to_fovs
 from gem_screening.tasks.tune_seg_gui import launch_tune_seg_gui
-from gem_screening.tasks.workflows_utils import scan_round1, scan_round2, illuminate, ligand_stimulation
+from gem_screening.tasks.workflows_utils import scan_round1, scan_round2, illuminate, ligand_stimulation, get_identifier
 from gem_screening.utils.client.cleanup import cleanup_stale
 from gem_screening.utils.client.mask_registration import register_masks_batch_client
 from gem_screening.utils.external import run_celltinder
@@ -77,9 +77,9 @@ def run_complete_flow(dish_grid: dict[str, dict[int, StageCoord]], a1_manager: A
                                 true_cell_threshold=settings.stim_settings.true_cell_threshold,
                                 csv_path=plate.csv_path)
 
-        run_celltinder(plate.csv_path, crop_size=settings.stim_settings.crop_size)
+        # run_celltinder(plate.csv_path, crop_size=settings.stim_settings.crop_size)
         
-        illuminate(a1_manager, settings, plate)
+        # illuminate(a1_manager, settings, plate)
         logger.info("Completed processing for all wells.")
 
 def run_rescue_flow(a1_manager: A1Manager, settings: PipelineSettings, plate_obj: Plate,) -> None:
@@ -142,7 +142,7 @@ def _from_scan(do_round1: bool, a1_manager: A1Manager, settings: PipelineSetting
             plate_obj.to_json()
         try:
             
-            identifier = _get_identifier(well_sublist, list_type)
+            identifier = get_identifier(well_sublist, list_type)
             prompt = prompt_message + identifier if identifier else prompt_message
             prompt_to_continue(prompt)
         except PipelineQuit:
@@ -161,17 +161,7 @@ def _from_scan(do_round1: bool, a1_manager: A1Manager, settings: PipelineSetting
     
     logger.info(f"Completed processing for well: {plate_obj.wells}")
 
-def _get_identifier(well_sublist: list[Well], list_type: str) -> str:
-    """
-    Get the identifier (row or column) for the well sublist based on the grouping type.
-    """
-    if list_type == 'col':
-        return well_sublist[0].well[1]  # e.g., '1' for column 1
-    elif list_type == 'row':
-        return well_sublist[0].well[0]  # e.g., 'A' for row A
-    elif list_type == 'well':
-        return well_sublist[0].well  # e.g., 'A1' for well A1
-    return ''
+
 
         
 

@@ -5,7 +5,6 @@ from a1_manager import A1Manager
 from progress_bar import setup_progress_monitor as progress_bar
 
 from gem_screening.tasks.injection import init_injection
-from gem_screening.tasks.workflows import _get_identifier
 from gem_screening.utils.prompt_gui import PipelineQuit
 from gem_screening.utils.prompts import get_ligand_prompt, prompt_to_continue
 from gem_screening.tasks.data_intensity import update_control_intensities
@@ -117,9 +116,20 @@ def ligand_stimulation(a1_manager: A1Manager, settings: PipelineSettings, well_l
         logger.info("Automated injection is disabled in settings. Please perform the ligand addition manually.") 
         try:
             prompt_message = get_ligand_prompt(list_type)
-            identifier = _get_identifier(well_list, list_type)
+            identifier = get_identifier(well_list, list_type)
             prompt = prompt_message + identifier if identifier else prompt_message
             prompt_to_continue(prompt)
         except PipelineQuit:
             raise
     
+def get_identifier(well_sublist: list[Well], list_type: str) -> str:
+    """
+    Get the identifier (row or column) for the well sublist based on the grouping type.
+    """
+    if list_type == 'col':
+        return well_sublist[0].well[1]  # e.g., '1' for column 1
+    elif list_type == 'row':
+        return well_sublist[0].well[0]  # e.g., 'A' for row A
+    elif list_type == 'well':
+        return well_sublist[0].well  # e.g., 'A1' for well A1
+    return ''
