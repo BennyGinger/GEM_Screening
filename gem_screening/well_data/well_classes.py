@@ -87,7 +87,8 @@ class FieldOfView:
             path (Path): Path to the existing TIFF file.
         """
         category = parse_image_filename(path)[1]
-        self.tiff_paths[category].append(path)
+        if path not in self.tiff_paths[category]:
+            self.tiff_paths[category].append(path)
     
     def load_images(self, category: str) -> list[NDArray[np.uint16]]:
         """

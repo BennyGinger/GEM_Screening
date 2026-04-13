@@ -71,9 +71,10 @@ def run_complete_flow(dish_grid: dict[str, dict[int, StageCoord]], a1_manager: A
             scan_round2(a1_manager, settings, well_sublist)
             plate.to_json()
             
-            assign_masks_to_fovs(plate.well_list)
-            
-            extract_measure_intensities(plate.positive_fovs,
+            assign_masks_to_fovs(well_sublist)
+
+            sublist_fovs = [fov for well in well_sublist for fov in well.positive_fovs]
+            extract_measure_intensities(sublist_fovs,
                                 true_cell_threshold=settings.stim_settings.true_cell_threshold,
                                 csv_path=plate.csv_path)
 
