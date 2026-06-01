@@ -7,7 +7,7 @@ import pandas as pd
 from skimage.measure import regionprops_table
 from progress_bar import run_parallel as parallel_progress_bar
 
-from gem_screening.utils.pipeline_constants import AFTER_STIM, BEFORE_STIM, CELL_ID, CELL_LABEL, CENTROID_X, CENTROID_Y, CONTROL_LABEL, FOV_CELLSORTER_X, FOV_CELLSORTER_Y, FOV_ID, FOV_X, FOV_Y, MASK_LABEL, POST_ILLUMINATION, PRE_ILLUMINATION, RATIO, STIM_LABEL, MEASURE_LABEL
+from gem_screening.utils.pipeline_constants import AFTER_STIM, BEFORE_STIM, CELL_ID, CELL_LABEL, CENTROID_X, CENTROID_Y, CONTROL_LABEL, FOV_CELLSORTER_X, FOV_CELLSORTER_Y, FOV_ID, FOV_X, FOV_Y, MASK_LABEL, POST_ILLUMINATION, PRE_ILLUMINATION, RATIO, REFSEG_LABEL, STIM_LABEL, MEASURE_LABEL, BEFORE_REF, AFTER_REF
 from gem_screening.well_data.well_classes import FieldOfView
 
 
@@ -57,13 +57,17 @@ def extract_measure_intensities(fovs_list: list[FieldOfView], true_cell_threshol
     for fov in fovs_to_process:
         # Check if FOV has required measure images
         measure_images = fov.tiff_paths.get(MEASURE_LABEL, [])
+        ref_images = fov.tiff_paths.get(REFSEG_LABEL, [])
         mask_images = fov.tiff_paths.get(MASK_LABEL, [])
         
-        if len(measure_images) >= 2 and len(mask_images) >= 1:
+        if len(measure_images) >= 2 and len(ref_images) >= 2 and len(mask_images) >= 1:
             valid_fovs.append(fov)
         else:
             skipped_fovs.append(fov)
-            logger.debug(f"Skipping FOV {fov.fov_id}: has {len(measure_images)} measure images and {len(mask_images)} masks (need 2+ measure, 1+ mask)")
+            logger.debug(
+                f"Skipping FOV {fov.fov_id}: has {len(measure_images)} measure images, "
+                f"{len(ref_images)} refseg images and {len(mask_images)} masks "
+                f"(need 2+ measure, 2+ refseg, 1+ mask)")
     
     if skipped_fovs:
         logger.warning(f"Skipping {len(skipped_fovs)} FOVs that don't have required images. Processing {len(valid_fovs)} valid FOVs.")
@@ -142,8 +146,13 @@ def _create_regionprops(fov: FieldOfView, true_cell_threshold: int) -> pd.DataFr
     Returns:
         pd.DataFrame: DataFrame containing the extracted region properties for the FOV.
     """
-    # Extract region properties for the measure images
+    # Extract region properties for the measure and refseg images
     props0, propsn = _regionprops_wrapper(fov, False)
+    ref_props0, ref_propsn = _regionprops_wrapper(
+        fov,
+        False,
+        img_cat=REFSEG_LABEL,
+        include_centroid=False)
     
     # Convert the properties to DataFrames
     df0 = pd.DataFrame(props0).rename(columns={'mean_intensity': BEFORE_STIM,
@@ -153,14 +162,17 @@ def _create_regionprops(fov: FieldOfView, true_cell_threshold: int) -> pd.DataFr
                                                'centroid-1': CENTROID_X,
                                                'label': CELL_LABEL})
     df = pd.merge(df0, dfn, on=CELL_LABEL, how='inner')
+    df_ref0 = pd.DataFrame(ref_props0).rename(columns={'mean_intensity': BEFORE_REF,
+                                                       'label': CELL_LABEL})
+    df_refn = pd.DataFrame(ref_propsn).rename(columns={'mean_intensity': AFTER_REF,
+                                                       'label': CELL_LABEL})
+    df = pd.merge(df, df_ref0, on=CELL_LABEL, how='left')
+    df = pd.merge(df, df_refn, on=CELL_LABEL, how='left')
     
-    # Add image and mask paths as columns
-    img_paths = sorted(fov.tiff_paths[MEASURE_LABEL])
-    mask_paths = sorted(fov.tiff_paths[MASK_LABEL])
-    df["img0_path"] = str(img_paths[0]) if len(img_paths) > 0 else None
-    df["imgn_path"] = str(img_paths[1]) if len(img_paths) > 1 else None
-    df["mask0_path"] = str(mask_paths[0]) if len(mask_paths) > 0 else None
-    df["maskn_path"] = str(mask_paths[1]) if len(mask_paths) > 1 else None
+    # Save semantic labels so downstream tools can resolve concrete files themselves.
+    df["img_label"] = MEASURE_LABEL
+    df["ref_label"] = REFSEG_LABEL
+    df["mask_label"] = MASK_LABEL
     
     # Apply the true cell threshold to the mean intensity, else set to 0
     df[AFTER_STIM] = df[AFTER_STIM].where(df[AFTER_STIM] >= true_cell_threshold, 0)
@@ -220,12 +232,20 @@ def _update_regionprops(fov: FieldOfView, df_ori: pd.DataFrame) -> pd.DataFrame:
     df = pd.merge(df, dfn, on=CELL_LABEL, how='left')
     return df
 
-def _regionprops_wrapper(fov: FieldOfView, is_control: bool) -> tuple[dict[str, NDArray], dict[str, NDArray]]:
+def _regionprops_wrapper(
+    fov: FieldOfView,
+    is_control: bool,
+    *,
+    img_cat: str | None = None,
+    include_centroid: bool | None = None) -> tuple[dict[str, NDArray], dict[str, NDArray]]:
     """
     Wrapper function to extract region properties for a single FieldOfView of predetermined properties (['label', 'mean_intensity', 'centroid']).
     Args:
         fov (FieldOfView): The FieldOfView object to process.
         is_control (bool): Whether to extract properties for control images or measure images.
+        img_cat (str | None): Optional image category override. If None, category is inferred from `is_control`.
+        include_centroid (bool | None): Optional centroid extraction override. If None, defaults to
+            True for measure images and False for control images.
     Returns:
         tuple[dict[str, NDArray], dict[str, NDArray]]:
             A tuple containing two dictionaries with region properties for the initial and final images.
@@ -233,16 +253,22 @@ def _regionprops_wrapper(fov: FieldOfView, is_control: bool) -> tuple[dict[str, 
     """
     # Determine the category of images and masks based on whether it's a control or measure FOV
     if is_control:
-        img_cat = CONTROL_LABEL
+        default_img_cat = CONTROL_LABEL
         mask_cat = STIM_LABEL
-        propn = ['label', 'mean_intensity']
+        default_include_centroid = False
     else:
-        img_cat = MEASURE_LABEL
+        default_img_cat = MEASURE_LABEL
         mask_cat = MASK_LABEL
-        propn = ['label', 'mean_intensity', 'centroid']
+        default_include_centroid = True
+
+    resolved_img_cat = img_cat if img_cat is not None else default_img_cat
+    resolved_include_centroid = include_centroid if include_centroid is not None else default_include_centroid
+    propn = ['label', 'mean_intensity']
+    if resolved_include_centroid:
+        propn.append('centroid')
     
     # Load the images and masks for the FOV
-    img_list = fov.load_images(img_cat)
+    img_list = fov.load_images(resolved_img_cat)
     mask_list = fov.load_images(mask_cat)
     
     logger.debug(f"FOV {fov.fov_id}: Found {len(img_list)} images and {len(mask_list)} masks")
