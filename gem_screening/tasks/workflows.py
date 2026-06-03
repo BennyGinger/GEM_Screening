@@ -78,7 +78,7 @@ def run_complete_flow(dish_grid: dict[str, dict[int, StageCoord]], a1_manager: A
                                 true_cell_threshold=settings.stim_settings.true_cell_threshold,
                                 csv_path=plate.csv_path)
 
-        # run_celltinder(plate.csv_path, crop_size=settings.stim_settings.crop_size)
+        run_celltinder(plate.csv_path, crop_size=settings.stim_settings.crop_size)
         
         # illuminate(a1_manager, settings, plate)
         logger.info("Completed processing for all wells.")
