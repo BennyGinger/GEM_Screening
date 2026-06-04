@@ -6,6 +6,7 @@ from cp_server import ComposeManager
 
 from gem_screening.tasks.data_intensity import extract_measure_intensities
 from gem_screening.tasks.image_capture import image_fovs
+from gem_screening.tasks.injection import init_injection
 from gem_screening.tasks.mask_utils import assign_masks_to_fovs
 from gem_screening.tasks.tune_seg_gui import launch_tune_seg_gui
 from gem_screening.tasks.workflows_utils import scan_round1, scan_round2, illuminate, ligand_stimulation, get_identifier
@@ -56,17 +57,37 @@ def run_complete_flow(dish_grid: dict[str, dict[int, StageCoord]], a1_manager: A
         # Prompt message mapping
         list_type = settings.dish_settings.well_grouping
         
-
+        # Initialize injection device if enabled
+        if settings.injection_settings.enabled:
+            inj_sets = settings.injection_settings
+            inj_device = init_injection(a1_manager, 
+                                        dish_name=settings.dish_settings.dish_name,
+                                        injection_device=inj_sets.injection_device,
+                                        needle_size=inj_sets.needle_size,
+                                        pressure=inj_sets.pressure)
+            logger.info(f"Initialized injection device: {inj_sets.injection_device}")
+        
+        
         for well_sublist in plate.well_sublists(list_type=list_type):
             # Start imaging
             scan_round1(a1_manager, settings, well_sublist)
             plate.to_json()
 
-            try:
-                ligand_stimulation(a1_manager, settings, well_sublist, list_type)
-            except PipelineQuit:
-                logger.info("User chose to quit the pipeline during ligand stimulation.")
-                raise
+            if settings.injection_settings.enabled:
+                
+                
+                for well in well_sublist:
+                    inj_device.move_to_position(well, position="top")
+                    inj_device.inject(inject_vol_ul=inj_sets.inject_vol_ul/2, mixing_cycles=inj_sets.mixing_cycles)
+                    inj_device.move_to_position(well, position="left")
+                    inj_device.inject(inject_vol_ul=inj_sets.inject_vol_ul/2, mixing_cycles=inj_sets.mixing_cycles)
+                    inj_device.dip_needle()
+            else:
+                try:
+                    ligand_stimulation(a1_manager, settings, well_sublist, list_type)
+                except PipelineQuit:
+                    logger.info("User chose to quit the pipeline during ligand stimulation.")
+                    raise
 
             scan_round2(a1_manager, settings, well_sublist)
             plate.to_json()
