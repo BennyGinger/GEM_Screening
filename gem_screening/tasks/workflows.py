@@ -6,10 +6,10 @@ from cp_server import ComposeManager
 
 from gem_screening.tasks.data_intensity import extract_measure_intensities
 from gem_screening.tasks.image_capture import image_fovs
-from gem_screening.tasks.injection import init_injection
+from gem_screening.tasks.injection import setup_injection_device
 from gem_screening.tasks.mask_utils import assign_masks_to_fovs
 from gem_screening.tasks.tune_seg_gui import launch_tune_seg_gui
-from gem_screening.tasks.workflows_utils import scan_round1, scan_round2, illuminate, ligand_stimulation, get_identifier
+from gem_screening.tasks.workflows_utils import scan_round1, scan_round2, illuminate, get_identifier, stimulate_dish
 from gem_screening.utils.client.cleanup import cleanup_stale
 from gem_screening.utils.client.mask_registration import register_masks_batch_client
 from gem_screening.utils.external import run_celltinder
@@ -18,10 +18,13 @@ from gem_screening.utils.prompts import get_ligand_prompt, prompt_to_continue
 from gem_screening.tasks.rescue_assessment import assess_rescue
 from gem_screening.utils.prompt_gui import PipelineQuit
 from gem_screening.settings.models import PipelineSettings
-from gem_screening.well_data.well_classes import Plate, Well
+from gem_screening.well_data.well_classes import Plate
 
 
 logger = logging.getLogger(__name__)
+
+INJECTION_POINTS = 2 # Number of points to inject per well (e.g., top and left)
+
 
 def run_complete_flow(dish_grid: dict[str, dict[int, StageCoord]], a1_manager: A1Manager, run_dir: Path, run_id: str, settings: PipelineSettings,) -> None:
     """
@@ -55,39 +58,17 @@ def run_complete_flow(dish_grid: dict[str, dict[int, StageCoord]], a1_manager: A
         plate = Plate(run_dir=run_dir, run_id=run_id, dish_grid=dish_grid)
 
         # Prompt message mapping
-        list_type = settings.dish_settings.well_grouping
+        grouping_method = settings.dish_settings.well_grouping
         
         # Initialize injection device if enabled
-        if settings.injection_settings.enabled:
-            inj_sets = settings.injection_settings
-            inj_device = init_injection(a1_manager, 
-                                        dish_name=settings.dish_settings.dish_name,
-                                        injection_device=inj_sets.injection_device,
-                                        needle_size=inj_sets.needle_size,
-                                        pressure=inj_sets.pressure)
-            logger.info(f"Initialized injection device: {inj_sets.injection_device}")
+        inj_device = setup_injection_device(a1_manager, settings)
         
-        
-        for well_sublist in plate.well_sublists(list_type=list_type):
+        for well_sublist in plate.well_sublists(grouping_method=grouping_method):
             # Start imaging
             scan_round1(a1_manager, settings, well_sublist)
             plate.to_json()
 
-            if settings.injection_settings.enabled:
-                
-                
-                for well in well_sublist:
-                    inj_device.move_to_position(well, position="top")
-                    inj_device.inject(inject_vol_ul=inj_sets.inject_vol_ul/2, mixing_cycles=inj_sets.mixing_cycles)
-                    inj_device.move_to_position(well, position="left")
-                    inj_device.inject(inject_vol_ul=inj_sets.inject_vol_ul/2, mixing_cycles=inj_sets.mixing_cycles)
-                    inj_device.dip_needle()
-            else:
-                try:
-                    ligand_stimulation(a1_manager, settings, well_sublist, list_type)
-                except PipelineQuit:
-                    logger.info("User chose to quit the pipeline during ligand stimulation.")
-                    raise
+            stimulate_dish(settings, grouping_method, inj_device, well_sublist, injection_point=INJECTION_POINTS)
 
             scan_round2(a1_manager, settings, well_sublist)
             plate.to_json()
@@ -103,6 +84,8 @@ def run_complete_flow(dish_grid: dict[str, dict[int, StageCoord]], a1_manager: A
         
         # illuminate(a1_manager, settings, plate)
         logger.info("Completed processing for all wells.")
+
+
 
 def run_rescue_flow(a1_manager: A1Manager, settings: PipelineSettings, plate_obj: Plate,) -> None:
     """
@@ -141,6 +124,8 @@ def run_rescue_flow(a1_manager: A1Manager, settings: PipelineSettings, plate_obj
 
                 illuminate(a1_manager, settings, plate_obj)
 
+
+################# Helper functions for workflows #################
 def _from_scan(do_round1: bool, a1_manager: A1Manager, settings: PipelineSettings, plate_obj: Plate, fov_ids: list[str] | None = None) -> None:
     """ 
     Run the pipeline workflow starting from round 1 imaging for a specific well object.
@@ -156,7 +141,7 @@ def _from_scan(do_round1: bool, a1_manager: A1Manager, settings: PipelineSetting
     prompt_message = get_ligand_prompt(list_type)
     
     # Run flow from round 1
-    for well_sublist in plate_obj.well_sublists(list_type=list_type):
+    for well_sublist in plate_obj.well_sublists(grouping_method=list_type):
         if do_round1:
             for well_obj in well_sublist:
                 image_fovs(well_obj, a1_manager, settings, f"{MEASURE_LABEL}_1", fov_ids)

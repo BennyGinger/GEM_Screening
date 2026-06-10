@@ -26,7 +26,7 @@ def complete_pipeline(settings: PipelineSettings) -> None:
         try: 
             prompt_to_continue(FOCUS_PROMPT)
         except PipelineQuit:
-            logger.info("User chose to quit during focus prompt. Stopping pipeline.")
+            logger.info("User chose to quit. Stopping pipeline.")
             return
     
     try:

@@ -342,22 +342,22 @@ class Plate:
         for well in self._well_list:
             well.process_well = True if well.well in well_names else False
     
-    def well_sublists(self, list_type: str = 'col') -> list[list[Well]]:
+    def well_sublists(self, grouping_method: str = 'col') -> list[list[Well]]:
         """
         Create sublists of wells grouped by column or row.
         Args:
-            list_type (str): 'col' to group by column, 'row' to group by row.
+            grouping_method (str): The type of grouping for the wells (e.g., 'row', 'col', 'well').
         Returns:
             list[list[Well]]: Sublists of Well objects grouped accordingly.
         """
-        if list_type not in ('col', 'row', 'well', 'all'):
+        if grouping_method not in ('col', 'row', 'well', 'all'):
             raise ValueError("list_type must be 'col', 'row', 'well', or 'all'")
 
         # If 'all', return the entire well list as a single sublist
-        if list_type == 'all':
+        if grouping_method == 'all':
             return [self.well_list]
         
-        if list_type == 'well':
+        if grouping_method == 'well':
             # Each well in its own sublist
             return [[well] for well in self.well_list]
         
@@ -367,10 +367,10 @@ class Plate:
             if not match:
                 continue
             row, col = match.groups()
-            key = col if list_type == 'col' else row.upper()
+            key = col if grouping_method == 'col' else row.upper()
             groups[key].append(well)
         # Sort groups by key (col as int, row as letter)
-        if list_type == 'col':
+        if grouping_method == 'col':
             sorted_keys = sorted(groups.keys(), key=lambda x: int(x))
         else:
             sorted_keys = sorted(groups.keys())
