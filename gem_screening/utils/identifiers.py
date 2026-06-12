@@ -28,9 +28,20 @@ def get_hostname() -> str:
     return hname
 
 
+def get_run_id(config_dir: Path) -> str:
+    if config_dir.joinpath("run_id.txt").exists():
+        with open(config_dir.joinpath("run_id.txt"), "r") as f:
+            run_id = f.read().strip()
+            if run_id:
+                return run_id
+    run_id = _make_run_id()
+    with open(config_dir.joinpath("run_id.txt"), "w") as f:
+        f.write(run_id)
+        return run_id
+
 HOST_PREFIX = get_hostname()
 
-def make_run_id() -> str:
+def _make_run_id() -> str:
     """
     Generate a unique run ID based on the hostname and a UUID.
     Returns:

@@ -1,4 +1,3 @@
-from functools import partial
 import logging
 from pathlib import Path
 
@@ -8,50 +7,101 @@ import pandas as pd
 from skimage.measure import regionprops_table
 from progress_bar import run_parallel as parallel_progress_bar
 
-from gem_screening.utils.pipeline_constants import AFTER_STIM, BEFORE_STIM, CELL_ID, CELL_LABEL, CENTROID_X, CENTROID_Y, CONTROL_LABEL, FOV_ID, FOV_X, FOV_Y, MASK_LABEL, POST_ILLUMINATION, PRE_ILLUMINATION, RATIO, STIM_LABEL, MEASURE_LABEL
+from gem_screening.utils.pipeline_constants import AFTER_STIM, BEFORE_STIM, CELL_ID, CELL_LABEL, CENTROID_X, CENTROID_Y, CONTROL_LABEL, FOV_CELLSORTER_X, FOV_CELLSORTER_Y, FOV_ID, FOV_X, FOV_Y, MASK_LABEL, POST_ILLUMINATION, PRE_ILLUMINATION, RATIO, REFSEG_LABEL, STIM_LABEL, MEASURE_LABEL, BEFORE_REF, AFTER_REF
 from gem_screening.well_data.well_classes import FieldOfView
 
 
 logger = logging.getLogger(__name__)
 
 
-def extract_measure_intensities(fovs: list[FieldOfView], 
-                     true_cell_threshold: int,
-                     csv_path: Path,
-                     *, 
-                     executor: str = 'thread', 
-                     max_workers: int | None = None) -> None:
+def extract_measure_intensities(fovs_list: list[FieldOfView], true_cell_threshold: int, csv_path: Path, *, executor: str = 'thread', max_workers: int | None = None) -> None:
     """
     Extract the region properties for all FOVs in parallel, convert it to a pandas `DataFrame` and save it to a CSV file.
     Args:
-        fovs (list[FieldOfView]): List of FieldOfView objects to process.
+        fovs_list (list[FieldOfView]): List of all positive FOVs to process across all wells.
         true_cell_threshold (int): Threshold for true cell detection. Below this intensity value, cells are considered noise and set to 0 in the output.
         csv_path (Path): Path to save the resulting CSV file.
         executor (str, optional): Type of executor to use for parallel processing ('thread' or 'process'). Defaults to 'thread'.
         max_workers (int | None): Maximum number of workers to use for parallel processing. Defaults to None, which lets the executor decide based on available resources.
     """
+    
+    # Check which FOVs need processing
+    fovs_to_process = []
+    existing_df = None
+    
+    if csv_path.exists():
+        try:
+            existing_df = pd.read_csv(csv_path)
+            existing_fov_ids = set(existing_df[FOV_ID].unique()) if FOV_ID in existing_df.columns else set()
+            
+            # Filter out FOVs that are already processed
+            fovs_to_process = [fov for fov in fovs_list if fov.fov_id not in existing_fov_ids]
+            
+            if not fovs_to_process:
+                logger.info(f"All {len(fovs_list)} FOVs already exist in {csv_path}. Skipping intensity extraction.")
+                return
+            
+            logger.info(f"Found {len(existing_fov_ids)} existing FOVs in CSV. Processing {len(fovs_to_process)} new FOVs.")
+            
+        except Exception as e:
+            logger.warning(f"Error reading existing CSV {csv_path}: {e}. Processing all FOVs.")
+            fovs_to_process = fovs_list
+    else:
+        fovs_to_process = fovs_list
+        logger.info(f"CSV file {csv_path} does not exist. Processing all {len(fovs_list)} FOVs.")
+
+    # Filter out FOVs that don't have required images
+    valid_fovs = []
+    skipped_fovs = []
+    
+    for fov in fovs_to_process:
+        # Check if FOV has required measure images
+        measure_images = fov.tiff_paths.get(MEASURE_LABEL, [])
+        ref_images = fov.tiff_paths.get(REFSEG_LABEL, [])
+        mask_images = fov.tiff_paths.get(MASK_LABEL, [])
+        
+        if len(measure_images) >= 2 and len(ref_images) >= 2 and len(mask_images) >= 1:
+            valid_fovs.append(fov)
+        else:
+            skipped_fovs.append(fov)
+            logger.debug(
+                f"Skipping FOV {fov.fov_id}: has {len(measure_images)} measure images, "
+                f"{len(ref_images)} refseg images and {len(mask_images)} masks "
+                f"(need 2+ measure, 2+ refseg, 1+ mask)")
+    
+    if skipped_fovs:
+        logger.warning(f"Skipping {len(skipped_fovs)} FOVs that don't have required images. Processing {len(valid_fovs)} valid FOVs.")
+    
+    if not valid_fovs:
+        logger.info("No valid FOVs to process.")
+        return
+        
+    fovs_to_process = valid_fovs
+
     # Bind the threshold into a worker
     worker = lambda fov: _create_regionprops(fov, true_cell_threshold)
     
     # Run the worker in parallel over all FOVs
     region_dfs = parallel_progress_bar(
         worker,
-        fovs,
+        fovs_to_process,
         executor=executor,
         max_workers=max_workers,
         desc="Extracting region properties")
     
     # Concatenate all the DataFrames
-    df = pd.concat([df for df in region_dfs if isinstance(df, pd.DataFrame)], ignore_index=True)
-    # TODO: Change that to parquet
+    new_df = pd.concat([df for df in region_dfs if isinstance(df, pd.DataFrame)], ignore_index=True)
+    
+    # If there's existing data, combine it with the new data
+    if existing_df is not None:
+        df = pd.concat([existing_df, new_df], ignore_index=True)
+    else:
+        df = new_df
+    
     df.to_csv(csv_path, index=False)
-    logger.info(f"Extracted region properties for {len(fovs)} FOVs and saved to {csv_path}.")
+    logger.info(f"Extracted region properties for {len(fovs_to_process)} FOVs and saved to {csv_path}.")
 
-def update_control_intensities(fovs: list[FieldOfView],
-                               csv_path: Path,
-                               *,
-                               executor: str = 'thread',
-                               max_workers: int | None = None) -> None:
+def update_control_intensities(fovs: list[FieldOfView], csv_path: Path, *, executor: str = 'thread', max_workers: int | None = None) -> None:
     """
     Update the region properties DataFrame with control images for all FOVs in parallel.
     Args:
@@ -64,8 +114,7 @@ def update_control_intensities(fovs: list[FieldOfView],
     df_ori = pd.read_csv(csv_path)
     tasks: list[tuple[FieldOfView, pd.DataFrame]] = [
         (fov, df_ori[df_ori[FOV_ID] == fov.fov_id].copy())
-        for fov in fovs
-    ]
+        for fov in fovs]
     
     # Typed worker that accepts a (FieldOfView, DataFrame) tuple and forwards to _update_regionprops
     # run_parallel expects the function to return the same type as its input, so return a (fov, DataFrame) tuple.
@@ -80,8 +129,7 @@ def update_control_intensities(fovs: list[FieldOfView],
         tasks,
         executor=executor,
         max_workers=max_workers,
-        desc="Updating region properties with control images",
-    )
+        desc="Updating region properties with control images",)
     
     # Extract the DataFrames from the results and concatenate them
     sub_dfs = [res[1] for res in results if isinstance(res, tuple) and isinstance(res[1], pd.DataFrame)]
@@ -98,8 +146,13 @@ def _create_regionprops(fov: FieldOfView, true_cell_threshold: int) -> pd.DataFr
     Returns:
         pd.DataFrame: DataFrame containing the extracted region properties for the FOV.
     """
-    # Extract region properties for the measure images
+    # Extract region properties for the measure and refseg images
     props0, propsn = _regionprops_wrapper(fov, False)
+    ref_props0, ref_propsn = _regionprops_wrapper(
+        fov,
+        False,
+        img_cat=REFSEG_LABEL,
+        include_centroid=False)
     
     # Convert the properties to DataFrames
     df0 = pd.DataFrame(props0).rename(columns={'mean_intensity': BEFORE_STIM,
@@ -109,18 +162,51 @@ def _create_regionprops(fov: FieldOfView, true_cell_threshold: int) -> pd.DataFr
                                                'centroid-1': CENTROID_X,
                                                'label': CELL_LABEL})
     df = pd.merge(df0, dfn, on=CELL_LABEL, how='inner')
+    df_ref0 = pd.DataFrame(ref_props0).rename(columns={'mean_intensity': BEFORE_REF,
+                                                       'label': CELL_LABEL})
+    df_refn = pd.DataFrame(ref_propsn).rename(columns={'mean_intensity': AFTER_REF,
+                                                       'label': CELL_LABEL})
+    df = pd.merge(df, df_ref0, on=CELL_LABEL, how='left')
+    df = pd.merge(df, df_refn, on=CELL_LABEL, how='left')
+    
+    # Save semantic labels so downstream tools can resolve concrete files themselves.
+    df["img_label"] = MEASURE_LABEL
+    df["ref_label"] = REFSEG_LABEL
+    df["mask_label"] = MASK_LABEL
     
     # Apply the true cell threshold to the mean intensity, else set to 0
     df[AFTER_STIM] = df[AFTER_STIM].where(df[AFTER_STIM] >= true_cell_threshold, 0)
     # Add the FOV ID and coordinates
-    fx, fy =fov.fov_coord.xy
-    df[FOV_Y] = fy
-    df[FOV_X] = fx
+    fx, fy = fov.fov_coord.xy
+    fx_val = float(fx) if fx is not None else np.nan
+    fy_val = float(fy) if fy is not None else np.nan
+    df[FOV_Y] = fy_val
+    df[FOV_X] = fx_val
+
+    # Convert centroid pixels into centered offsets from the FOV center,
+    # then project those offsets onto the stage/cellsorter coordinates.
+    img_shape = fov.load_images(MEASURE_LABEL)[0].shape
+    center_y = (img_shape[0] - 1) / 2.0
+    center_x = (img_shape[1] - 1) / 2.0
+    df[FOV_CELLSORTER_Y] = fy_val + (df[CENTROID_Y] - center_y)
+    df[FOV_CELLSORTER_X] = fx_val + (df[CENTROID_X] - center_x)
+
     # Generate the cell ID
     df[FOV_ID] = fov.fov_id
     df[CELL_ID] = [f"{fov.fov_id}C{cell}" for cell in df[CELL_LABEL]]
     # Apply the ratio, avoiding division by zero
     df[RATIO] = df[AFTER_STIM] / df[BEFORE_STIM].replace(0, np.nan)
+
+    # Discard cells where ratio is NaN or Inf (e.g. BEFORE_STIM was 0) OR
+    # cells whose AFTER_STIM intensity was below the true_cell_threshold (set to 0 above).
+    invalid_ratio_mask = ~np.isfinite(df[RATIO])
+    below_threshold_mask = df[AFTER_STIM] == 0
+    to_drop_mask = invalid_ratio_mask | below_threshold_mask
+    dropped = int(to_drop_mask.sum())
+    if dropped:
+        logger.debug(
+            f"FOV {fov.fov_id}: Discarding {dropped} cells (invalid ratio or below threshold).")
+        df = df[~to_drop_mask].reset_index(drop=True)
     return df
 
 def _update_regionprops(fov: FieldOfView, df_ori: pd.DataFrame) -> pd.DataFrame:
@@ -146,12 +232,20 @@ def _update_regionprops(fov: FieldOfView, df_ori: pd.DataFrame) -> pd.DataFrame:
     df = pd.merge(df, dfn, on=CELL_LABEL, how='left')
     return df
 
-def _regionprops_wrapper(fov: FieldOfView, is_control: bool) -> tuple[dict[str, NDArray], dict[str, NDArray]]:
+def _regionprops_wrapper(
+    fov: FieldOfView,
+    is_control: bool,
+    *,
+    img_cat: str | None = None,
+    include_centroid: bool | None = None) -> tuple[dict[str, NDArray], dict[str, NDArray]]:
     """
     Wrapper function to extract region properties for a single FieldOfView of predetermined properties (['label', 'mean_intensity', 'centroid']).
     Args:
         fov (FieldOfView): The FieldOfView object to process.
         is_control (bool): Whether to extract properties for control images or measure images.
+        img_cat (str | None): Optional image category override. If None, category is inferred from `is_control`.
+        include_centroid (bool | None): Optional centroid extraction override. If None, defaults to
+            True for measure images and False for control images.
     Returns:
         tuple[dict[str, NDArray], dict[str, NDArray]]:
             A tuple containing two dictionaries with region properties for the initial and final images.
@@ -159,16 +253,22 @@ def _regionprops_wrapper(fov: FieldOfView, is_control: bool) -> tuple[dict[str, 
     """
     # Determine the category of images and masks based on whether it's a control or measure FOV
     if is_control:
-        img_cat = CONTROL_LABEL
+        default_img_cat = CONTROL_LABEL
         mask_cat = STIM_LABEL
-        propn = ['label', 'mean_intensity']
+        default_include_centroid = False
     else:
-        img_cat = MEASURE_LABEL
+        default_img_cat = MEASURE_LABEL
         mask_cat = MASK_LABEL
-        propn = ['label', 'mean_intensity', 'centroid']
+        default_include_centroid = True
+
+    resolved_img_cat = img_cat if img_cat is not None else default_img_cat
+    resolved_include_centroid = include_centroid if include_centroid is not None else default_include_centroid
+    propn = ['label', 'mean_intensity']
+    if resolved_include_centroid:
+        propn.append('centroid')
     
     # Load the images and masks for the FOV
-    img_list = fov.load_images(img_cat)
+    img_list = fov.load_images(resolved_img_cat)
     mask_list = fov.load_images(mask_cat)
     
     logger.debug(f"FOV {fov.fov_id}: Found {len(img_list)} images and {len(mask_list)} masks")

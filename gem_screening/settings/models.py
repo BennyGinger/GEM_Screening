@@ -1,6 +1,27 @@
 from pathlib import Path
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Any, Type, TypeVar
+import json
 
+from pydantic import BaseModel as PydanticBaseModel
+from pydantic import Field
+
+    
+T = TypeVar("T", bound="BaseModel")
+
+class BaseModel(PydanticBaseModel):
+    def to_json(self, file_path: Path) -> None:
+        """Save the model to a JSON file."""
+        from gem_screening.utils.serializers import CustomJSONEncoder
+        with open(file_path, 'w') as fp:
+            json.dump(self, fp, cls=CustomJSONEncoder, indent=2)
+
+    @classmethod
+    def from_json(cls: Type[T], file_path: Path) -> T:
+        """Load the model from a JSON file."""
+        from gem_screening.utils.serializers import custom_json_decoder
+        with open(file_path, 'r') as f:
+            data = json.load(f, object_hook=custom_json_decoder)
+        return data
 
 class LoggingSettings(BaseModel):
     """
@@ -31,17 +52,19 @@ class DishSettings(BaseModel):
     Attributes:
         dish_name (str, optional): Name of the dish, e.g., '35mm', 'ibidi-8well', or '96well'. Defaults to '35mm'.
         well_selection (str | list[str], optional): Well name or list of wells to image, e.g., ['A1', 'A2']. If 'all', will image all possible wells. Defaults to ['A1'].
-        method (str, optional): Method for autofocus, e.g., 'sq_grad' or 'Manual'. Defaults to 'sq_grad'.
-        overwrite_autofocus (bool, optional): If True, will overwrite the autofocus settings. Defaults to False.
+        well_grouping (str, optional): Grouping of wells for imaging, either by 'col' (columns), 'row' (rows), 'well' (individual wells), or 'all' (no grouping). Defaults to 'col'.
+        af_method (str, optional): Method for autofocus, e.g., 'sq_grad' or 'Manual'. Defaults to 'sq_grad'.
         dmd_window_only (bool, optional): If True, will only use the DMD window for measurement. Defaults to True.
         numb_field_view (int, optional): Number of field views to image. If None, will run the whole well.
         overlap_percent (float, optional): Overlap percentage for field views. If None, will use optimal overlap for the dish.
+        overwrite_autofocus (bool, optional): If True, will overwrite the autofocus settings. Defaults to False.
         overwrite_calib (bool, optional): If True, will overwrite the calibration file. Defaults to False.
         af_savedir (Path, optional): Directory to save the autofocus images. Only applicable for the square gradient method. Defaults to None.
         n_corners_in (int, optional): Number of corners of each fov that should be contained within a round well at the edges. Defaults to 4.
     """
     dish_name: str = '35mm'
     well_selection: str | list[str] = ['A1']
+    well_grouping: str = Field(default='col', exclude=True)
     af_method: str = 'sq_grad'
     dmd_window_only: bool = True
     numb_field_view: int | None = None
@@ -61,7 +84,7 @@ class PresetMeasure(BaseModel):
     """
     optical_configuration: str = 'GFP'
     intensity: int = 25
-    exposure_ms: int = 100
+    exposure_ms: int = 200
 
 class PresetRefseg(BaseModel):
     """
@@ -73,7 +96,7 @@ class PresetRefseg(BaseModel):
     """
     optical_configuration: str = 'iRed'
     intensity: int = 5
-    exposure_ms: int = 100
+    exposure_ms: int = 200
     
 class PresetControl(BaseModel):
     """
@@ -85,7 +108,7 @@ class PresetControl(BaseModel):
     """
     optical_configuration: str = 'RFP'
     intensity: int = 40
-    exposure_ms: int = 100
+    exposure_ms: int = 200
 
 class PresetStim(BaseModel):
     """
@@ -130,6 +153,7 @@ class StimSettings(BaseModel):
     """
     Pydantic model for Settings for stimulation masks.
     Attributes:
+        do_illuminate (bool, optional): If True, will perform light stimulation. Defaults to True.
         true_cell_threshold (int, optional): Mean intensity threshold for true cell detection. Below this value, cells are considered noise and set to 0 in the output. Defaults to 50.
         crop_size (int, optional): Size of the crop for the display of the ROI, for the CellTinder GUI, to select positive cells. Defaults to 251.
         erosion_factor (int, optional): Erosion factor for the stimulation masks to avoid stimulation of neighboring cells. Defaults to 3.
@@ -137,24 +161,25 @@ class StimSettings(BaseModel):
     Notes:
         - `PresetStim` contains the optical configuration (str), intensity (%), and exposure time (sec) for light stimulation.
     """
+    do_illuminate: bool = True
     true_cell_threshold: int = 50
     crop_size: int = 251
     erosion_factor: int = 3
     preset: PresetStim = PresetStim()
 
-class ServerSettings(BaseModel):
+class ServerSettings(BaseModel, extra='allow'):
     """
     Pydantic model for Settings for the server used in the imaging process.
     Attributes:
         sigma (float, optional): Sigma value for background subtraction. Defaults to 0.
         size (int, optional): Size parameter for background subtraction. Defaults to 7.
         do_denoise (bool, optional): If True, will use the denoising model. Defaults to True. Deprecated in cellpose>=4.0, parameter will be ignored.
-        model_type (str, optional): Type of the Cellpose model, e.g., 'cyto2', 'cyto3'. Defaults to 'cpsam'.
+        model_type (str, optional): Type of the Cellpose model, e.g., 'cyto2', 'cyto3'. Defaults to 'cyto3'.
         restore_type (str, optional): Type of restoration for the Cellpose model, e.g., 'denoise_cyto2', 'denoise_cyto3'. Defaults to 'denoise_cyto3'. Deprecated in cellpose>=4.0, parameter will be ignored.
         gpu (bool, optional): If True, will use GPU for processing. Defaults to True.
         channels (list[int], optional): List of channels to use for segmentation. Defaults to None. Deprecated in cellpose>=4.0, parameter will be ignored.
         diameter (int, optional): Diameter for segmentation, e.g., 40 or 60. Defaults to 40. Deprecated in cellpose>=4.0, parameter will be ignored.
-        flow_threshold (float, optional): Flow threshold for segmentation. Defaults to 1.
+        flow_threshold (float, optional): Flow threshold for segmentation. Defaults to 0.4.
         cellprob_threshold (float, optional): Cell probability threshold for segmentation. Defaults to 0.
         z_axis (int, optional): Z-axis index for 3D segmentation. Defaults to None.
         do_3D (bool, optional): If True, will perform 3D segmentation. Defaults to False.
@@ -171,29 +196,62 @@ class ServerSettings(BaseModel):
     sigma: float = 0.0
     size: int = 7
     do_denoise: bool = True
-    model_type: str = 'cpsam'
+    model_type: str = 'cyto3'
     restore_type: str = 'denoise_cyto3'
     gpu: bool = True
     channels: list[int] | None = None
     diameter: int = 40
-    flow_threshold: float = 1.0
+    flow_threshold: float = 0.4
     cellprob_threshold: float = 0.0
     z_axis: int | None = None
     do_3D: bool = False
     stitch_threshold_3D: float = 0.0
     track_stitch_threshold: float = 0.75
+    extra_settings: dict[str, Any] = Field(default_factory=dict)
     
     ## Set by pipeline ##
     well_id: str = ''
     dst_folder: str = ''
     total_fovs: int = 0
     
+    def to_backend_dict(self) -> dict[str, Any]:
+        """
+        Convert the ServerSettings object to a dictionary suitable for backend processing.
+        Returns:
+            dict[str, Any]: Dictionary representation of the ServerSettings object with keys formatted for backend use.
+        """
+        backend_dict = self.model_dump(exclude={'server_timeout_sec', 'well_id', 'dst_folder', 'total_fovs', 'extra_settings'})
+        backend_dict.update(self.extra_settings)
+        return backend_dict
+
+
+class InjectionSettings(BaseModel):
+    """
+    Pydantic model for Settings for the injection device used in the ligand stimulation process.
+    Attributes:
+        enabled (bool, optional): If True, will perform automated injection. If False, the injection step will be manual. Defaults to True.
+        injection_device (str, optional): Type of injection device, either 'nanopick' for nanopick head control or 'quickpick' for quickpick valve control. Defaults to 'quickpick'.
+        needle_size (int | None, optional): Needle size for quickpick valve control, i.e., 30, 50 or 70. Required if injection_device is 'quickpick'. Defaults to 50.
+        pressure (float | None, optional): Pressure value (bar) for quickpick valve control. Required if injection_device is 'quickpick'. Defaults to 0.3.
+        inject_vol_ul (float, optional): Volume to inject in microliters. Defaults to 10.0.
+        inject_time_ms (float | None, optional): Injection time in milliseconds, only needed for nanopick head control. Defaults to None.
+        mixing_cycles (int, optional): Number of mixing cycles during injection, default is 1 (meaning there is no mixing). Defaults to 3.
+    """
+    enabled: bool = True
+    injection_device: str = 'quickpick'
+    needle_size: int | None = 50
+    pressure: float | None = 0.3
+    inject_vol_ul: float = 10.0
+    inject_time_ms: float | None = None
+    mixing_cycles: int = 3
+
 class PipelineSettings(BaseModel):
     """
     Pydantic model for Settings for the entire imaging pipeline.
     Attributes:
         savedir (str): Directory where images will be saved.
         savedir_name (str): Name of the directory for saving images.
+        dev_mode (bool, optional): If True, enables development mode without tearing down the Compose environment. Defaults to False.
         base_url (str): Base URL for the servers, defaults to `localhost`.
         logging_settings (LoggingSettings): Settings for logging configuration.
         acquisition_settings (AcquisitionSettings): Settings for the aquisition process.
@@ -205,11 +263,36 @@ class PipelineSettings(BaseModel):
     """
     savedir: str
     savedir_name: str
+    dev_mode: bool = False
     base_url: str = 'localhost'
     logging_settings: LoggingSettings
     acquisition_settings: AcquisitionSettings
     dish_settings: DishSettings
     measure_settings: MeasureSettings
+    injection_settings: InjectionSettings
     server_settings: ServerSettings
     control_settings: ControlSettings
     stim_settings: StimSettings
+    
+    @property
+    def dish_name(self) -> str:
+        """Convenience property to access the dish name directly from the pipeline settings."""
+        return self.dish_settings.dish_name
+    
+
+if __name__ == "__main__":
+    from pathlib import Path
+    
+    path = Path("/media/ben/Analysis/Python/Docker_mount/Test_images/tiff/Run3/settings.json")
+    
+    # Generate first the saved settings
+    settings = ServerSettings()
+    settings.to_json(path)
+    
+    # Load settings
+    loaded_settings = ServerSettings.from_json(path)
+
+    # Compare
+    print(settings == loaded_settings)
+    print(settings.to_backend_dict())
+    print(loaded_settings.to_backend_dict())# Should print True if all attributes are equal

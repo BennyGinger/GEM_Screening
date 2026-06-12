@@ -1,12 +1,12 @@
 [project]
 name = "gem-screening"
-version = "0.1.0"
+version = "1.3.1"
 description = "Add your description here"
 readme = "README.md"
 authors = [
     { name = "Benoit Roux", email = "benoit.roux@gmail.com" }
 ]
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
 dependencies = [
     "a1-manager",
     "celltinder",
@@ -23,8 +23,7 @@ gem-screening = "gem_screening:pipeline"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[tool.uv.sources]
-a1-manager = { workspace = true }
-celltinder = { workspace = true }
-progress-bar = { workspace = true }
-cp-server = { workspace = true }
+[dependency-groups]
+dev = [
+    "pytest>=8.4.2",
+]

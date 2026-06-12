@@ -1,42 +1,57 @@
-from gem_screening.utils.settings.models import AcquisitionSettings, DishSettings, PresetMeasure, PresetControl, PresetStim, ServerSettings, PresetRefseg, MeasureSettings, ControlSettings, StimSettings, PipelineSettings, LoggingSettings
+from gem_screening.settings.models import AcquisitionSettings, DishSettings, PresetMeasure, PresetControl, PresetStim, ServerSettings, PresetRefseg, MeasureSettings, ControlSettings, StimSettings, PipelineSettings, LoggingSettings, InjectionSettings
 
 # Folder where the experiment folder will be created
 savedir = r'D:\Ben'
 
 # Name for the experiment folder, timestamp will be added as prefix
-savedir_name = 'test_pipeline'
-
+savedir_name = 'lib66-5KETE-red-Selection'
 # Aquisition settings for the microscope
 aqui_sets = AcquisitionSettings(
                     objective='20x',)
 
 # Settings for the dish used in the imaging process
 dish_sets = DishSettings(
-                    dish_name='35mm',
-                    well_selection=['A1'],
-                    af_method='sq_grad',
+                    dish_name='96well',
+                    # well_selection=['A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7', 'A8', 'A9', 'A10', 'A11', 'A12'],
+                    well_selection='all',
+                    well_grouping='col',
+                    af_method='Manual',
                     overwrite_autofocus=False,
                     overwrite_calib=False,
-                    numb_field_view=3,)
+                    # numb_field_view=1,
+                    numb_field_view=None,
+                    dmd_window_only=False,
+                    )
 
 # Preset settings for imaging for measurement
 measure_sets = MeasureSettings(
                     preset_measure=PresetMeasure(
-                                    optical_configuration='GFP',
+                                    optical_configuration='RFP',
                                     intensity=25),
+                    do_refseg=True,
                     preset_refseg=PresetRefseg(
                                     optical_configuration='iRed',
                                     intensity=5))
 
+# Settings for the automated injection
+injection_sets = InjectionSettings(
+                    enabled=False, # whether to perform automated injection or not, if False, the injection step will be manual 
+                    injection_device='quickpick',
+                    needle_size=50, # in microns, only needed for quickpick head control
+                    pressure=0.3, # in bar, only needed for quickpick head control
+                    inject_vol_ul=10, # in microliters, for both injection devices
+                    inject_time_ms=None, # in milliseconds, only needed for nanopick head control
+                    mixing_cycles=3) # number of mixing cycles during injection
+
 # Settings for the segmentation and tracking server
 server_sets = ServerSettings(
-                    flow_threshold=1.0,
-                    cellprob_threshold=0.0,
-                    track_stitch_threshold=0.75)
+                    flow_threshold=0.5,
+                    cellprob_threshold=-0.4,
+                    track_stitch_threshold=0.65)
 
 # Preset settings for control imaging before and after light stimulation
 control_sets = ControlSettings(
-                    control_loop=True,
+                    control_loop=False,
                     preset=PresetControl(
                                     optical_configuration='RFP',
                                     intensity=40))
@@ -56,11 +71,13 @@ stim_sets = StimSettings(
 full_settings = PipelineSettings(
     savedir=savedir,
     savedir_name=savedir_name,
+    dev_mode=True,
     base_url='localhost',
     logging_settings=LoggingSettings(log_level='INFO',),
     acquisition_settings=aqui_sets,
     dish_settings=dish_sets,
     measure_settings=measure_sets,
+    injection_settings=injection_sets,
     server_settings=server_sets,
     control_settings=control_sets,
     stim_settings=stim_sets)

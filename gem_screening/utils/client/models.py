@@ -2,8 +2,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from gem_screening.utils.pipeline_constants import BG_SETS, CP_SETS
-from gem_screening.utils.settings.models import ServerSettings
+from gem_screening.utils.pipeline_constants import BG_SETS
+from gem_screening.settings.models import ServerSettings
 
 def _transform_path_for_container(img_path: Path) -> str:
     """Transform a Windows path to the corresponding Docker container path."""
@@ -31,11 +31,11 @@ class BackgroundPayload():
     Payload Model for the `/process_bg_sub` endpoint.
     This model is used to send background subtraction parameters to the server.
     Attributes:
-        img_path (str): Path to the image file to be processed.
+        img_path (str | list[str]): Path(s) to the image file(s) to be processed.
         sigma (float): Sigma value for background subtraction.
         size (int): Size parameter for background subtraction.
     """
-    img_path: str
+    img_path: str | list[str]
     sigma: float = 0.0
     size: int = 7
 
@@ -47,7 +47,7 @@ class ProcessPayload(BackgroundPayload):
     It inherits from `BackgroundPayload` and adds additional parameters for segmentation and tracking.
     
     Attributes Inherited:
-        img_path (str): Path to the image file to be processed.
+        img_path (str | list[str]): Path(s) to the image file(s) to be processed.
         sigma (float): Sigma value for background subtraction.
         size (int): Size parameter for background subtraction.
     
@@ -66,7 +66,24 @@ class ProcessPayload(BackgroundPayload):
     track_stitch_threshold: float = 0.75
     round: int | None = None
 
-def build_payload(img_path: str, 
+@dataclass
+class RegisterMasksBatchPayload:
+    """
+    Payload Model for the `/register_mask` endpoint for batch processing.
+    This model is used to register multiple masks to Redis and optionally trigger tracking.
+    
+    Attributes:
+        run_id (str): Unique identifier for the processing run.
+        mask_paths (list[str]): List of paths to mask files (container paths).
+        total_fovs (int): Total number of FOVs (used for pending counter initialization).
+        track_stitch_threshold (float): Threshold for stitching masks during tracking. Default to 0.75.
+    """
+    run_id: str
+    mask_paths: list[str]
+    total_fovs: int
+    track_stitch_threshold: float = 0.75
+
+def build_payload(img_path: str | list[str], 
                    server_settings: ServerSettings,
                    *,
                    bg_only: bool = False,
@@ -81,16 +98,14 @@ def build_payload(img_path: str,
         (BackgroundPayload | ProcessPayload): The payload containing the image processing parameters.
     """
     # build the background settings payload
-    
     bg_sets = BG_SETS.copy()
     settings_dict = server_settings.model_dump()
+    override = {k: v for k, v in settings_dict.items() if k in bg_sets}
+    bg_sets.update(override)
     if bg_only:
-        override = {k: v for k, v in settings_dict.items() if k in bg_sets}
-        bg_sets.update(override)
         return BackgroundPayload(img_path=img_path, **bg_sets)
-    
+
     # Otherwise, build the full processing payload
-    cp_sets = CP_SETS.copy()
     track_stitch_threshold = settings_dict.pop("track_stitch_threshold", 0.75)
     # Required parameters — raise if missing
     well_id = settings_dict.pop("well_id", None)
@@ -112,12 +127,7 @@ def build_payload(img_path: str,
         total_fovs = int(total_fovs)  # type: ignore[assignment]
     except Exception as e:
         raise ValueError(f"total_fovs must be an integer, got {total_fovs!r}") from e
-    
-    # Extract the different settings parameters
-    for sets in (bg_sets, cp_sets):
-        overrides = {k: v for k, v in settings_dict.items() if k in sets}
-        sets.update(overrides)
-    
+
     # Build the payload
     return ProcessPayload(
         img_path=img_path,
@@ -125,7 +135,7 @@ def build_payload(img_path: str,
         well_id=str(well_id),
         total_fovs=total_fovs,  # int ensured above
         track_stitch_threshold=track_stitch_threshold,
-        cellpose_settings=cp_sets,
+        cellpose_settings=server_settings.to_backend_dict(),
         **bg_sets,
     )
                           
