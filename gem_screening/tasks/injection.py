@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 
 OFFSET_MAPPING = {
-    '96well': 2000}
+    '96well': 2000, '384well': 500}
 
 
 
@@ -86,6 +86,7 @@ class Injection():
         return (x, y) # type: ignore
     
     def move_to_position(self, well: Well, position: str)-> None:
+        #def move_to_position(self, center: StageCoord, position: str)-> None:
         """
         Move the arm to the specified (x, y) coordinates.
         """
@@ -102,6 +103,8 @@ class Injection():
             point = StageCoord(xy = [x-offset, y]) # type: ignore
         elif position.lower() == "bottom":
             point = StageCoord(xy = [x, y+offset]) # type: ignore
+        elif position.lower() == "middle":
+            point = StageCoord(xy = [x, y]) # type: ignore
         return self.a1_manager.set_stage_position(point)
       
     def inject(self, inject_vol_ul: float, injection_time_ms: float | None = None, mixing_cycles: int = 1) -> None:
