@@ -51,6 +51,7 @@ def scan_round2(a1_manager: A1Manager, settings: PipelineSettings, well_list: li
 
     # Wait for all images to be processed
     well_ids = [w.well_id for w in well_list]
+    logger.debug(f"Polling for completion of image processing for wells: {', '.join(well_ids)}")
     wait_for_completion(well_ids, timeout=settings.server_settings.server_timeout_sec)
     
 

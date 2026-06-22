@@ -11,6 +11,11 @@ from gem_screening.utils.prompt_gui import PipelineQuit
 from gem_screening.settings.models import PipelineSettings
 
 
+
+
+
+
+
 def complete_pipeline(settings: PipelineSettings) -> None:
     """
     Main function to run the complete pipeline for cell imaging and stimulation.
@@ -22,7 +27,7 @@ def complete_pipeline(settings: PipelineSettings) -> None:
     a1_manager, run_dir, logger, run_id = initialize_pipeline(settings)
     
     # Prompt user to focus on cells
-    if settings.dish_settings.dish_name.lower() not in ['35mm', '96well']:
+    if settings.dish_settings.dish_name.lower() not in ['35mm', '96well', '384well']:
         try: 
             prompt_to_continue(FOCUS_PROMPT)
         except PipelineQuit:
