@@ -64,22 +64,6 @@ class Injection():
         """
         return self.arm._get_arm_position
     
-    def _get_well_center(self, well: Well) -> StageCoord | None:
-        """
-        Get the center coordinates of the specified well from the dish calibration data.
-        
-        Args:
-            well (str): The identifier of the well (e.g., "A1", "B2", etc.) for which to retrieve the center coordinates.
-            
-        Returns:
-            StageCoord: A StageCoord object containing the (x, y) coordinates of the center of the specified well.
-        """
-        
-        # Move to the center of the well based on the calibration data
-        well_grid = well.well_grid
-        max_point = max(well_grid)
-        return well_grid.get(max_point)
-    
     def move_to_position(self, well: Well, position: str)-> None:
         #def move_to_position(self, center: StageCoord, position: str)-> None:
         """
@@ -88,9 +72,7 @@ class Injection():
         dish_name = self.arm.dish
         offset = OFFSET_MAPPING.get(dish_name, 0)
         
-        center = self._get_well_center(well)
-        if center is None:
-            raise ValueError(f"Center coordinates for well {well.well} not found in dish calibration data.")
+        center = well.center
         
         if position.lower() == "top":
             center['xy'] = [center['xy'][0], center['xy'][1]-offset]

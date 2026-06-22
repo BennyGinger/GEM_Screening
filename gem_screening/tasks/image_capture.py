@@ -116,11 +116,10 @@ def _process_fovs(imaging_loop: str, fovs_to_process: list[FieldOfView], a1_mana
     # Initialize process
     batches = [[] for _ in steps]
     well = fovs_to_process[0].well  # Assume all FOVs belong to the same well
-    fovs_list = fovs_to_process[:-1] # Remove the last point which is the middle of the well (only for injection)
-    total_fovs = len(fovs_list)
+    total_fovs = len(fovs_to_process)
     
     # Process each FOV
-    for fov in progress_bar(fovs_list, desc=f"Imaging {imaging_loop} of well {well}", total=total_fovs):
+    for fov in progress_bar(fovs_to_process, desc=f"Imaging {imaging_loop} of well {well}", total=total_fovs):
         for i, (loop_name, preset, post_fn) in enumerate(steps):
             img_path = snap(fov, input_preset=preset, imaging_loop=loop_name)
             if img_path is None:

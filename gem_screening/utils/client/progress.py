@@ -33,6 +33,7 @@ def _initialize_progress(well_ids: list[str]) -> tuple[list[str], int]:
     remaining_by_well: dict[str, int] = {}
     for wid in well_ids:
         data = _fetch_status(wid)
+        logger.debug(f"Status for well {wid}: {data}")
         status = data.get('status')
         if status == 'finished':
             logger.info(f"Run {wid} already finished.")

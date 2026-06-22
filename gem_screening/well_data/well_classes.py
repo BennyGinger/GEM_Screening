@@ -164,6 +164,7 @@ class Well:
     # Filled after __post_init__
     img_dir: Path = field(init=False)
     mask_dir: Path = field(init=False)
+    _center_fov: FieldOfView = field(init=False)
     _process_well: bool = field(default=True)
     _fov_obj_list: list[FieldOfView] = field(init=False)
     
@@ -177,8 +178,17 @@ class Well:
         self.mask_dir = _setup_dir(self.well_dir, MASK_FOLDER, self.well)
 
         # Unpack the field of view objects
-        self._fov_obj_list = self._unpack_fov()
-         
+        self._fov_obj_list, self._center_fov = self._unpack_fov()
+
+    @property
+    def center(self) -> StageCoord:
+        """
+        Get the center field of view of the well.
+        Returns:
+            FieldOfView: The center field of view object.
+        """
+        return self._center_fov.fov_coord
+    
     def _reset_folder(self)-> None:
         """
         Remove all folders and files in the well folder.
@@ -197,11 +207,13 @@ class Well:
                 else:
                     child.unlink()
     
-    def _unpack_fov(self)-> list[FieldOfView]:
+    def _unpack_fov(self)-> tuple[list[FieldOfView], FieldOfView]:
         """
         Unpack the field of view objects from the well grid.
         """
-        return [FieldOfView(self.well_dir, coord, i) for i, coord in sorted(self.well_grid.items())]
+        list_fov = [FieldOfView(self.well_dir, coord, i) for i, coord in sorted(self.well_grid.items())]
+        center_fov = list_fov.pop(-1)
+        return list_fov, center_fov
     
     @property
     def positive_fovs(self)-> list[FieldOfView]:
