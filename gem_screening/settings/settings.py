@@ -4,7 +4,7 @@ from gem_screening.settings.models import AcquisitionSettings, DishSettings, Pre
 savedir = r'D:\Ben'
 
 # Name for the experiment folder, timestamp will be added as prefix
-savedir_name = 'lib66-5KETE-red-Selection'
+savedir_name = 'troubleshooting'
 # Aquisition settings for the microscope
 aqui_sets = AcquisitionSettings(
                     objective='20x',)
@@ -12,21 +12,21 @@ aqui_sets = AcquisitionSettings(
 # Settings for the dish used in the imaging process
 dish_sets = DishSettings(
                     dish_name='96well',
-                    # well_selection=['A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7', 'A8', 'A9', 'A10', 'A11', 'A12'],
-                    well_selection='all',
+                    well_selection=['A1', 'B1', 'C1', 'D1', 'E1', 'F1', 'G1', 'H1'],
+                    # well_selection='all',
                     well_grouping='col',
                     af_method='Manual',
                     overwrite_autofocus=False,
                     overwrite_calib=False,
                     # numb_field_view=1,
-                    numb_field_view=None,
+                    numb_field_view=3,
                     dmd_window_only=False,
                     )
 
 # Preset settings for imaging for measurement
 measure_sets = MeasureSettings(
                     preset_measure=PresetMeasure(
-                                    optical_configuration='RFP',
+                                    optical_configuration='GFP',
                                     intensity=25),
                     do_refseg=True,
                     preset_refseg=PresetRefseg(
@@ -71,7 +71,7 @@ stim_sets = StimSettings(
 full_settings = PipelineSettings(
     savedir=savedir,
     savedir_name=savedir_name,
-    dev_mode=True,
+    dev_mode=False,
     base_url='localhost',
     logging_settings=LoggingSettings(log_level='INFO',),
     acquisition_settings=aqui_sets,
