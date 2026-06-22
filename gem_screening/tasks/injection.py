@@ -1,19 +1,21 @@
 from __future__ import annotations # Enable type annotation to be stored as string
 
-import json
-from pathlib import Path
+import logging
 from time import sleep
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from a1_manager import A1Manager, StageCoord
 from a1_manager.microscope_hardware.nanopick.devices.injection_protocol import PickDevice
 from a1_manager.microscope_hardware.nanopick.injection_factory import get_pick_device
 from a1_manager.microscope_hardware.nanopick.devices.marZ import MarZ
+from gem_screening.settings.models import InjectionSettings, PipelineSettings
 from gem_screening.well_data.well_classes import Well
 
 if TYPE_CHECKING:
     from pycromanager import Core
 
+
+logger = logging.getLogger(__name__)
 
 OFFSET_MAPPING = {
     '96well': 2000, '384well': 500}
@@ -29,18 +31,13 @@ class Injection():
         - nanopick_dish(str): name of the used dish (e.g.: "96-well")
     """
     
-    __slots__ =  'arm', 'injection_device', 'a1_manager', 'dish_calib'
+    __slots__ =  'arm', 'injection_device', 'a1_manager'
     
     def __init__(self,  arm: MarZ, injection_device: PickDevice, a1_manager: A1Manager) -> None: 
         
         self.arm = arm
         self.injection_device = injection_device
         self.a1_manager = a1_manager
-        
-        dish_calib_path = Path(r"C:\Users\uManager\Documents\__repos__\GEM_suite\A1_manager\config\calib_96well.json")
-        with open(dish_calib_path, 'r') as f:
-            dish_calib: dict[str, dict[str, Any]]= json.load(f)
-        self.dish_calib= dish_calib
                 
     
     def _ul_to_nl_converter(self, volume_ul: float) -> float:
@@ -67,7 +64,7 @@ class Injection():
         """
         return self.arm._get_arm_position
     
-    def _get_well_center(self, well: Well) -> tuple[float, float]:
+    def _get_well_center(self, well: Well) -> StageCoord | None:
         """
         Get the center coordinates of the specified well from the dish calibration data.
         
@@ -75,15 +72,13 @@ class Injection():
             well (str): The identifier of the well (e.g., "A1", "B2", etc.) for which to retrieve the center coordinates.
             
         Returns:
-            tuple[float, float]: A tuple containing the (x, y) center coordinates of the specified well in stage units (e.g., micrometers).
+            StageCoord: A StageCoord object containing the (x, y) coordinates of the center of the specified well.
         """
         
         # Move to the center of the well based on the calibration data
-        well_id = well.well
-        well_data = self.dish_calib.get(well_id, {})
-        x, y = well_data.get('center', (None, None))
-        
-        return (x, y) # type: ignore
+        well_grid = well.well_grid
+        max_point = max(well_grid)
+        return well_grid.get(max_point)
     
     def move_to_position(self, well: Well, position: str)-> None:
         #def move_to_position(self, center: StageCoord, position: str)-> None:
@@ -93,19 +88,21 @@ class Injection():
         dish_name = self.arm.dish
         offset = OFFSET_MAPPING.get(dish_name, 0)
         
-        x, y = self._get_well_center(well)
-        point = StageCoord()
+        center = self._get_well_center(well)
+        if center is None:
+            raise ValueError(f"Center coordinates for well {well.well} not found in dish calibration data.")
+        
         if position.lower() == "top":
-            point = StageCoord(xy = [x, y-offset]) # type: ignore
+            center['xy'] = [center['xy'][0], center['xy'][1]-offset]
         elif position.lower() == "left":
-            point = StageCoord(xy = [x+offset, y]) # type: ignore
+            center['xy'] = [center['xy'][0]+offset, center['xy'][1]]
         elif position.lower() == "right":
-            point = StageCoord(xy = [x-offset, y]) # type: ignore
+            center['xy'] = [center['xy'][0]-offset, center['xy'][1]]
         elif position.lower() == "bottom":
-            point = StageCoord(xy = [x, y+offset]) # type: ignore
+            center['xy'] = [center['xy'][0], center['xy'][1]+offset]
         elif position.lower() == "middle":
-            point = StageCoord(xy = [x, y]) # type: ignore
-        return self.a1_manager.set_stage_position(point)
+            pass
+        return self.a1_manager.set_stage_position(center)
       
     def inject(self, inject_vol_ul: float, injection_time_ms: float | None = None, mixing_cycles: int = 1) -> None:
         """ 
@@ -156,3 +153,27 @@ def init_injection(a1_manager: A1Manager, dish_name: str, injection_device: str,
     return Injection(arm=arm, injection_device=pick, a1_manager=a1_manager)
 
 
+def setup_injection_device(a1_manager: A1Manager, settings: PipelineSettings) -> Injection | None:
+    """
+    Initialize the injection device if automated injection is enabled in the settings. Returns the initialized Injection object or None if injection is not enabled.
+    """
+    inj_device = None
+    inj_sets = None
+    if settings.injection_settings.enabled:
+        inj_sets = settings.injection_settings
+        inj_device = init_injection(a1_manager, 
+                                        dish_name=settings.dish_settings.dish_name,
+                                        injection_device=inj_sets.injection_device,
+                                        needle_size=inj_sets.needle_size,
+                                        pressure=inj_sets.pressure)
+        logger.info(f"Initialized injection device: {inj_sets.injection_device}")
+    return inj_device
+
+
+
+
+
+if __name__ == "__main__":
+    d= {"a":12, 2:5, "c":7}
+    max_key = max(d)
+    print(d.get(max_key))

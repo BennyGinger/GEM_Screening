@@ -1,18 +1,17 @@
 import logging
 
-from a1_manager.utils.utility_classes import StageCoord
 from a1_manager import A1Manager
 from progress_bar import setup_progress_monitor as progress_bar
 
-from gem_screening.tasks.injection import init_injection
 from gem_screening.utils.prompt_gui import PipelineQuit
 from gem_screening.utils.prompts import get_ligand_prompt, prompt_to_continue
+from gem_screening.tasks.injection import Injection
 from gem_screening.tasks.data_intensity import update_control_intensities
 from gem_screening.tasks.image_capture import image_fovs
 from gem_screening.tasks.light_stimulation import create_stim_masks, illuminate_fovs
 from gem_screening.utils.client.progress import wait_for_completion
 from gem_screening.utils.pipeline_constants import MEASURE_LABEL
-from gem_screening.settings.models import PipelineSettings
+from gem_screening.settings.models import InjectionSettings, PipelineSettings
 from gem_screening.well_data.well_classes import Plate, Well
 
 
@@ -55,6 +54,32 @@ def scan_round2(a1_manager: A1Manager, settings: PipelineSettings, well_list: li
     wait_for_completion(well_ids, timeout=settings.server_settings.server_timeout_sec)
     
 
+def stimulate_dish(settings: PipelineSettings, grouping_method: str, inj_device: Injection | None, well_sublist: list[Well], injection_point: int) -> None:
+    """
+    Perform ligand stimulation for a sublist of wells in the dish, either using an automated injection device or by prompting the user for manual addition based on the settings.
+    Args:
+        settings (PipelineSettings): The settings for the pipeline, including stimulation settings and dish settings.
+        grouping_method (str): The type of grouping for the wells (e.g., 'row', 'col', 'well').
+        inj_device (Injection | None): An instance of the Injection class if automated injection is enabled, or None if manual addition is required.
+        well_sublist (list[Well]): A list of Well objects representing the sublist of wells to be stimulated.
+        injection_point (int): The injection point index to use for the injection device (e.g., 0 for center, 1 for top, 2 for top left, 3 for top left bottom and 4 for top left bottom right).
+    """
+    if inj_device is not None:
+        logger.info("Automated injection is enabled in settings. Performing ligand addition using injection device.") 
+        inj_sets = settings.injection_settings
+        _injection(well_sublist, inj_device, inj_sets, injection_point)
+    else:
+        try:
+            logger.info("Automated injection is disabled in settings. Please perform the ligand addition manually.") 
+            prompt_message = get_ligand_prompt(grouping_method)
+            identifier = get_identifier(well_sublist, grouping_method)
+            prompt = prompt_message + identifier if identifier else prompt_message
+            prompt_to_continue(prompt)
+        except PipelineQuit:
+            logger.info("User chose to quit the pipeline during ligand stimulation.")
+            raise
+
+
 def illuminate(a1_manager: A1Manager, settings: PipelineSettings, plate_obj: Plate) -> None:
     """
     Illuminate the cells in the well object.
@@ -72,56 +97,6 @@ def illuminate(a1_manager: A1Manager, settings: PipelineSettings, plate_obj: Pla
     update_control_intensities(plate_obj.positive_fovs, csv_path=plate_obj.csv_path)
 
 
-def ligand_stimulation(a1_manager: A1Manager, settings: PipelineSettings, well_list: list[Well], list_type: str) -> None:
-    """
-    Run the ligand stimulation part of the workflow, which includes either prompting the user to perform manual ligand addition or performing automated injection based on the settings.
-    Args:
-        a1_manager (A1Manager): The A1Manager instance to control the microscope hardware.
-        settings (PipelineSettings): The settings for the pipeline, including acquisition settings, dish settings, and injection settings.
-        well_list (list[Well]): List of well objects to process for ligand stimulation.
-        list_type (str): The type of grouping for the wells, either 'row' or 'col', used for generating the appropriate prompt message for manual ligand addition.
-        dish_map (dict[str, WellCircleCoord | WellSquareCoord]): A mapping of well names to their corresponding coordinates, used for automated injection to move the stage to the correct position for ligand addition.
-    
-    Raises:
-        PipelineQuit: If the user chooses to quit during the manual ligand addition prompt.
-    """
-    
-    center_points: list[StageCoord] = []
-    for well in well_list:
-        center = well.well_grid[max(well.well_grid)]
-        center_points.append(center)
-    
-    if not center_points:
-        logger.warning("No valid center points found in dish map for ligand stimulation.")
-        return
-    
-    if settings.injection_settings.enabled:
-        logger.info("Automated injection is enabled. Starting automated ligand stimulation.")
-        device_name = settings.injection_settings.injection_device
-        needle_size = settings.injection_settings.needle_size
-        pressure = settings.injection_settings.pressure
-        injec_vol_ul = settings.injection_settings.inject_vol_ul
-        inject_time_ms = settings.injection_settings.inject_time_ms
-        mixing_cycles = settings.injection_settings.mixing_cycles
-        pick = init_injection(a1_manager.core, settings.dish_name, device_name, needle_size, pressure) # type: ignore
-        
-        for coord in center_points:
-            # move the stage
-            a1_manager.set_stage_position(coord)
-            
-            # perform the injection
-            pick.inject(injec_vol_ul, inject_time_ms, mixing_cycles)
-        
-    else:
-        logger.info("Automated injection is disabled in settings. Please perform the ligand addition manually.") 
-        try:
-            prompt_message = get_ligand_prompt(list_type)
-            identifier = get_identifier(well_list, list_type)
-            prompt = prompt_message + identifier if identifier else prompt_message
-            prompt_to_continue(prompt)
-        except PipelineQuit:
-            raise
-    
 def get_identifier(well_sublist: list[Well], list_type: str) -> str:
     """
     Get the identifier (row or column) for the well sublist based on the grouping type.
@@ -133,3 +108,31 @@ def get_identifier(well_sublist: list[Well], list_type: str) -> str:
     elif list_type == 'well':
         return well_sublist[0].well  # e.g., 'A1' for well A1
     return ''
+
+
+def _injection(well_sublist: list[Well], inj_device: Injection, inj_sets: InjectionSettings, injection_point: int) -> None:
+    """
+    Perform the injection for a list of wells using the specified injection device and settings.
+    Args:
+        - well_sublist (list[Well]): List of Well objects to perform injection on.
+        - inj_device (Injection): An instance of the Injection class to control the injection process.
+        - inj_sets (InjectionSettings): Settings for the injection, including injection volume, time, and mixing cycles.
+    """
+    if injection_point == 0:
+        position = ["center"]
+    elif injection_point == 1:
+        position = ["top"]
+    elif injection_point == 2:
+        position = ["top", "left"]
+    elif injection_point == 3:
+        position = ["top", "left", "bottom"]
+    elif injection_point == 4:
+        position = ["top", "left", "bottom", "right"]
+    else:
+        raise ValueError(f"Invalid injection point index: {injection_point}. Must be between 0 and 4.")
+    
+    for well in progress_bar(well_sublist, desc="Performing injection", total=len(well_sublist)):
+        for pos in position:
+            inj_device.move_to_position(well, position=pos)
+            inj_device.inject(inject_vol_ul=inj_sets.inject_vol_ul/len(pos), mixing_cycles=inj_sets.mixing_cycles)
+        inj_device.dip_needle()
