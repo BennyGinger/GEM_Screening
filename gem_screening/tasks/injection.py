@@ -104,7 +104,7 @@ class Injection():
         self.arm_to_liquid()
         self.injection_device.inject(injection_volume, injection_time_ms, mixing_cycles = mixing_cycles)    
         self.arm_to_home()
-        sleep(1) # wait a bit for the stage to move, adjust as needed
+        sleep(2) # wait a bit for the stage to move, adjust as needed
     
     def dip_needle(self) -> None:
         """

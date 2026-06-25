@@ -25,15 +25,15 @@ class AcquisitionPage(QWidget):
 
         # Dish Name
         self.dish_name = QComboBox()
-        self.dish_name.addItems(["35mm", "ibidi-8well", "96well"])
+        self.dish_name.addItems(["35mm", "ibidi-8well", "96well", "384well"])
         dish_label = QLabel("Dish Name")
-        dish_label.setToolTip("Name of the dish, e.g., '35mm', 'ibidi-8well', or '96well'. Defaults to '35mm'.")
+        dish_label.setToolTip("Name of the dish, e.g., '35mm', 'ibidi-8well', or '96well', '384well'. Defaults to '35mm'.")
         layout.addRow(dish_label, self.dish_name)
 
         # Well Selection Widget (always visible)
         self.well_selection_widget = WellSelectionWidget()
         well_label = QLabel("Well Selection")
-        well_label.setToolTip("Select wells to image. For 35mm, only A1 is available. For ibidi-8well and 96well, select wells directly.")
+        well_label.setToolTip("Select wells to image. For 35mm, only A1 is available. For ibidi-8well and 96well, '384well', select wells directly.")
         layout.addRow(well_label, self.well_selection_widget)
 
         self.dish_name.currentTextChanged.connect(self.on_dish_changed)

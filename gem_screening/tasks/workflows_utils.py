@@ -135,5 +135,6 @@ def _injection(well_sublist: list[Well], inj_device: Injection, inj_sets: Inject
     for well in progress_bar(well_sublist, desc="Performing injection", total=len(well_sublist)):
         for pos in position:
             inj_device.move_to_position(well, position=pos)
-            inj_device.inject(inject_vol_ul=inj_sets.inject_vol_ul/len(pos), mixing_cycles=inj_sets.mixing_cycles)
+            #print(f"Injecting {inj_sets.inject_vol_ul/len(position)} uL into well {well.well} at position {pos}")
+            inj_device.inject(inject_vol_ul=inj_sets.inject_vol_ul/len(position), mixing_cycles=inj_sets.mixing_cycles)
         inj_device.dip_needle()

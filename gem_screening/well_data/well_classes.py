@@ -544,6 +544,7 @@ class Plate:
         calib_files = [
             "calib_35mm.json",
             "calib_96well.json",
+            'calib_384well.json',
         ]
         
         for calib_name in calib_files:

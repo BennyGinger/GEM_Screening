@@ -23,8 +23,7 @@ from gem_screening.well_data.well_classes import Plate
 
 logger = logging.getLogger(__name__)
 
-INJECTION_POINTS = 2 # Number of points to inject per well (e.g., top and left)
-
+INJECTION_POINTS = {'96well': 2, '384well' : 0}  # Number of points to inject per well (e.g., top and left)
 
 def run_complete_flow(dish_grid: dict[str, dict[int, StageCoord]], a1_manager: A1Manager, run_dir: Path, run_id: str, settings: PipelineSettings,) -> None:
     """
@@ -67,8 +66,16 @@ def run_complete_flow(dish_grid: dict[str, dict[int, StageCoord]], a1_manager: A
             # Start imaging
             scan_round1(a1_manager, settings, well_sublist)
             plate.to_json()
-
-            stimulate_dish(settings, grouping_method, inj_device, well_sublist, injection_point=INJECTION_POINTS)
+            
+            dish_name = settings.dish_settings.dish_name.lower()
+            if dish_name == "96well":
+                injection_point = INJECTION_POINTS['96well']
+            elif dish_name == "384well":
+                injection_point = INJECTION_POINTS['384well'] 
+            else:
+                injection_point = 0  # No injection for other dish types  
+                
+            stimulate_dish(settings, grouping_method, inj_device, well_sublist, injection_point=injection_point)
 
             scan_round2(a1_manager, settings, well_sublist)
             plate.to_json()

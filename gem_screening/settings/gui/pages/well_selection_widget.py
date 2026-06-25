@@ -50,6 +50,8 @@ class WellSelectionWidget(QWidget):
             cell_w, cell_h = 80, 60
         elif self.dish_type == "96well":
             cell_w = cell_h = 34  # Increased from 28 to 34
+        elif self.dish_type == "384well":
+            cell_w = cell_h = 17  
         else:
             cell_w, cell_h = 40, 32
         table_w = self.cols * cell_w
@@ -115,6 +117,11 @@ class WellSelectionWidget(QWidget):
             self.row_labels = [chr(ord('A')+i) for i in range(8)]
             self.col_labels = [str(i+1) for i in range(12)]
             self.selected_wells = []
+        elif dish_type == "384well":
+            self.rows, self.cols = 16,24
+            self.row_labels = [chr(ord('A')+i) for i in range(16)]
+            self.col_labels = [str(i+1) for i in range(24)]
+            self.selected_wells = []
         self.update()
 
     def paintEvent(self, a0):
@@ -153,6 +160,28 @@ class WellSelectionWidget(QWidget):
                         painter.setBrush(QColor(255, 255, 255, 0))
                     painter.setPen(QPen(Qt.GlobalColor.black, 1))
                     painter.drawRect(rect)
+                    painter.setPen(Qt.GlobalColor.black)
+                    painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, well)
+        elif self.dish_type == "384well":
+            # Draw square wells for 384-well plate
+            cell_w = cell_h = 18
+            table_w = self.cols * cell_w
+            table_h = self.rows * cell_h
+            x0 = (w - table_w) // 2
+            y0 = (h - table_h) // 2
+            font = QFont()
+            font.setPointSize(7)  # Smaller font needed to fit labels inside 18px box
+            painter.setFont(font)
+            for r in range(self.rows):
+                for c in range(self.cols):
+                    well = f"{self.row_labels[r]}{self.col_labels[c]}"
+                    rect = QRect(x0 + c*cell_w, y0 + r*cell_h, cell_w, cell_h)
+                    if well in self.selected_wells:
+                        painter.setBrush(QColor(200, 220, 255, 180))
+                    else:
+                        painter.setBrush(QColor(255, 255, 255, 0))
+                    painter.setPen(QPen(Qt.GlobalColor.black, 1))
+                    painter.drawRect(rect)  # Draws square wells instead of circles
                     painter.setPen(Qt.GlobalColor.black)
                     painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, well)
         elif self.dish_type == "96well":

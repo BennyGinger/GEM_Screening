@@ -13,7 +13,8 @@ from gem_screening.settings.models import PipelineSettings, MeasureSettings
 
 
 PRE_STAGE_POS = {'35mm':{'ZDrive':2500,'PFSOffset':8200},
-                 '96well':{'ZDrive':5500,'PFSOffset':8200}}
+                 '96well':{'ZDrive':5500,'PFSOffset':8200},
+                 '384well':{'ZDrive':5500,'PFSOffset':8200}}
 
 
 def initialize_pipeline(settings: PipelineSettings) -> tuple[A1Manager, Path, logging.Logger, str]:
