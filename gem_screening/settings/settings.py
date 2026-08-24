@@ -4,7 +4,7 @@ from gem_screening.settings.models import AcquisitionSettings, DishSettings, Pre
 savedir = r'D:\Ben'
 
 # Name for the experiment folder, timestamp will be added as prefix
-savedir_name = 'test_pipeline'
+savedir_name = 'Lib86_96w'
 # Aquisition settings for the microscope
 aqui_sets = AcquisitionSettings(
                     objective='20x',)
@@ -16,7 +16,7 @@ dish_sets = DishSettings(
                     # well_selection=['B2', 'C2', 'D2', 'E2', 'F2', 'G2',],
                     # well_selection=['B3', 'C3', 'D3', 'E3', 'F3', 'G3'],
                     # well_selection=['B4', 'C4', 'D4', 'E4', 'F4', 'G4'],
-                    well_selection=['A5', 'B5', 'C5', 'D5', 'E5', 'F5', 'G5', 'H5',],
+                    well_selection=['5',],
                     # well_selection=['A6', 'B6', 'C6', 'D6', 'E6', 'F6', 'G6', 'H6',],
                     # well_selection=['A7', 'B7', 'C7', 'D7', 'E7', 'F7', 'G7', 'H7',],
                     # well_selection=['A8', 'B8', 'C8', 'D8', 'E8', 'F8', 'G8', 'H8',],
@@ -34,7 +34,7 @@ dish_sets = DishSettings(
 # Preset settings for imaging for measurement
 measure_sets = MeasureSettings(
                     preset_measure=PresetMeasure(
-                                    optical_configuration='GFP',
+                                    optical_configuration='RFP',
                                     intensity=25),
                     do_refseg=True,
                     preset_refseg=PresetRefseg(
