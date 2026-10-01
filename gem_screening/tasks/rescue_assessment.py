@@ -132,8 +132,9 @@ def assess_rescue(plate_obj: Plate) -> Dict[str, Any]:
     # Combine all untracked masks for registration
     all_untracked_masks = untracked_r1_masks + untracked_r2_masks
     
-    # Final check: If no masks need registration, go to celltinder (regardless of missing FOVs)
-    if not all_untracked_masks:
+    # Analysis is safe only when both imaging rounds are complete. Having no
+    # untracked masks alone is not sufficient: acquisition may still be partial.
+    if r1_complete and r2_complete and not all_untracked_masks:
         return {
             "case": "celltinder",
             "masks_to_register": [],
