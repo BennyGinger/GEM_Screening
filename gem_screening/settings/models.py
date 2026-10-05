@@ -11,14 +11,14 @@ T = TypeVar("T", bound="BaseModel")
 class BaseModel(PydanticBaseModel):
     def to_json(self, file_path: Path) -> None:
         """Save the model to a JSON file."""
-        from gem_screening.utils.serializers import CustomJSONEncoder
+        from gem_screening.infrastructure.serialization import CustomJSONEncoder
         with open(file_path, 'w') as fp:
             json.dump(self, fp, cls=CustomJSONEncoder, indent=2)
 
     @classmethod
     def from_json(cls: Type[T], file_path: Path) -> T:
         """Load the model from a JSON file."""
-        from gem_screening.utils.serializers import custom_json_decoder
+        from gem_screening.infrastructure.serialization import custom_json_decoder
         with open(file_path, 'r') as f:
             data = json.load(f, object_hook=custom_json_decoder)
         return data
@@ -63,9 +63,9 @@ class DishSettings(BaseModel):
         n_corners_in (int, optional): Number of corners of each fov that should be contained within a round well at the edges. Defaults to 4.
     """
     dish_name: str = '35mm'
-    well_selection: str | list[str] = ['A1']
-    well_grouping: str = Field(default='col', exclude=True)
-    af_method: str = 'sq_grad'
+    well_selection: str | list[str] = Field(default_factory=lambda: ['A1'])
+    well_grouping: str = 'col'
+    af_method: str = 'Manual'
     dmd_window_only: bool = True
     numb_field_view: int | None = None
     overlap_percent: float | None = None
@@ -133,27 +133,27 @@ class MeasureSettings(BaseModel):
     Notes:
         - `PresetMeasure` and `PresetRefseg` contain the optical configuration (str), intensity (%), and exposure time (ms) for imaging.
     """
-    preset_measure: PresetMeasure = PresetMeasure()
+    preset_measure: PresetMeasure = Field(default_factory=PresetMeasure)
     do_refseg: bool = True
-    preset_refseg: PresetRefseg = PresetRefseg()
+    preset_refseg: PresetRefseg = Field(default_factory=PresetRefseg)
 
 class ControlSettings(BaseModel):
     """
     Pydantic model for Settings for control imaging before and after light stimulation.
     Attributes:
-        control_loop (bool, optional): If True, will perform a control imaging loop before and after light stimulation. Defaults to True.
+        control_loop (bool, optional): If True, will perform a control imaging loop before and after light stimulation. Defaults to False.
         preset (PresetControl): Preset settings for control imaging.
     Notes:
         - `PresetControl` contains the optical configuration (str), intensity (%), and exposure time (ms) for control imaging.
     """
-    control_loop: bool = True
-    preset: PresetControl = PresetControl()
+    control_loop: bool = False
+    preset: PresetControl = Field(default_factory=PresetControl)
 
 class StimSettings(BaseModel):
     """
     Pydantic model for Settings for stimulation masks.
     Attributes:
-        do_illuminate (bool, optional): If True, will perform light stimulation. Defaults to True.
+        do_illuminate (bool, optional): If True, will perform light stimulation. Defaults to False.
         true_cell_threshold (int, optional): Mean intensity threshold for true cell detection. Below this value, cells are considered noise and set to 0 in the output. Defaults to 50.
         crop_size (int, optional): Size of the crop for the display of the ROI, for the CellTinder GUI, to select positive cells. Defaults to 251.
         erosion_factor (int, optional): Erosion factor for the stimulation masks to avoid stimulation of neighboring cells. Defaults to 3.
@@ -161,11 +161,11 @@ class StimSettings(BaseModel):
     Notes:
         - `PresetStim` contains the optical configuration (str), intensity (%), and exposure time (sec) for light stimulation.
     """
-    do_illuminate: bool = True
+    do_illuminate: bool = False
     true_cell_threshold: int = 50
     crop_size: int = 251
     erosion_factor: int = 3
-    preset: PresetStim = PresetStim()
+    preset: PresetStim = Field(default_factory=PresetStim)
 
 class ServerSettings(BaseModel, extra='allow'):
     """
@@ -229,7 +229,7 @@ class InjectionSettings(BaseModel):
     """
     Pydantic model for Settings for the injection device used in the ligand stimulation process.
     Attributes:
-        enabled (bool, optional): If True, will perform automated injection. If False, the injection step will be manual. Defaults to True.
+        enabled (bool, optional): If True, will perform automated injection. If False, the injection step will be manual. Defaults to False.
         injection_device (str, optional): Type of injection device, either 'nanopick' for nanopick head control or 'quickpick' for quickpick valve control. Defaults to 'quickpick'.
         needle_size (int | None, optional): Needle size for quickpick valve control, i.e., 30, 50 or 70. Required if injection_device is 'quickpick'. Defaults to 50.
         pressure (float | None, optional): Pressure value (bar) for quickpick valve control. Required if injection_device is 'quickpick'. Defaults to 0.3.
@@ -237,7 +237,7 @@ class InjectionSettings(BaseModel):
         inject_time_ms (float | None, optional): Injection time in milliseconds, only needed for nanopick head control. Defaults to None.
         mixing_cycles (int, optional): Number of mixing cycles during injection, default is 1 (meaning there is no mixing). Defaults to 3.
     """
-    enabled: bool = True
+    enabled: bool = False
     injection_device: str = 'quickpick'
     needle_size: int | None = 50
     pressure: float | None = 0.3
@@ -261,18 +261,18 @@ class PipelineSettings(BaseModel):
         control_settings (ControlSettings): Settings for control imaging before and after light stimulation.
         stim_settings (StimSettings): Settings for light stimulation masks.
     """
-    savedir: str
-    savedir_name: str
+    savedir: str = ''
+    savedir_name: str = ''
     dev_mode: bool = False
     base_url: str = 'localhost'
-    logging_settings: LoggingSettings
-    acquisition_settings: AcquisitionSettings
-    dish_settings: DishSettings
-    measure_settings: MeasureSettings
-    injection_settings: InjectionSettings
-    server_settings: ServerSettings
-    control_settings: ControlSettings
-    stim_settings: StimSettings
+    logging_settings: LoggingSettings = Field(default_factory=LoggingSettings)
+    acquisition_settings: AcquisitionSettings = Field(default_factory=AcquisitionSettings)
+    dish_settings: DishSettings = Field(default_factory=DishSettings)
+    measure_settings: MeasureSettings = Field(default_factory=MeasureSettings)
+    injection_settings: InjectionSettings = Field(default_factory=InjectionSettings)
+    server_settings: ServerSettings = Field(default_factory=ServerSettings)
+    control_settings: ControlSettings = Field(default_factory=ControlSettings)
+    stim_settings: StimSettings = Field(default_factory=StimSettings)
     
     @property
     def dish_name(self) -> str:

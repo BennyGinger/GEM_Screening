@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [project.scripts]
-gem-screening = "gem_screening:pipeline"
+gem-screening = "gem_screening.gui.main_window:main"
 
 [build-system]
 requires = ["hatchling"]

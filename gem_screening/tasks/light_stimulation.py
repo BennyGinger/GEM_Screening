@@ -11,11 +11,11 @@ import cv2
 from progress_bar import run_parallel as parallel_progress_bar
 from progress_bar import setup_progress_monitor as progress_bar
 
-from gem_screening.utils.pipeline_constants import PROCESS, FOV_ID, MASK_LABEL, STIM_LABEL, CONTROL_LABEL
+from gem_screening.infrastructure.constants import PROCESS, FOV_ID, MASK_LABEL, STIM_LABEL, CONTROL_LABEL
 from gem_screening.tasks.image_capture import image_fovs
-from gem_screening.utils.filesystem import imwrite_atomic
+from gem_screening.infrastructure.filesystem import imwrite_atomic
 from gem_screening.settings.models import PipelineSettings, PresetStim
-from gem_screening.well_data.well_classes import FieldOfView, Well, Plate
+from gem_screening.experiment import FieldOfView, Plate, Well
 
 
 # a TypeVar for “any numpy scalar type”

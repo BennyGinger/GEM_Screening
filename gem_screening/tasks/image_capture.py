@@ -9,12 +9,12 @@ from a1_manager import A1Manager, StageCoord
 from numpy.typing import NDArray
 from progress_bar import setup_progress_monitor as progress_bar
 
-from gem_screening.utils.client.service import bg_removal_client, full_process_client
-from gem_screening.utils.filesystem import imwrite_atomic
-from gem_screening.utils.identifiers import parse_category_instance
-from gem_screening.utils.pipeline_constants import REFSEG_LABEL
+from gem_screening.client.service import bg_removal_client, full_process_client
+from gem_screening.infrastructure.filesystem import imwrite_atomic
+from gem_screening.infrastructure.identifiers import parse_category_instance
+from gem_screening.infrastructure.constants import REFSEG_LABEL
 from gem_screening.settings.models import PipelineSettings, PresetMeasure, PresetRefseg, PresetControl, ServerSettings
-from gem_screening.well_data.well_classes import FieldOfView, Well
+from gem_screening.experiment import FieldOfView, Well
 
 
 # Set up logging

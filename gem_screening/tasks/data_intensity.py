@@ -7,8 +7,8 @@ import pandas as pd
 from skimage.measure import regionprops_table
 from progress_bar import run_parallel as parallel_progress_bar
 
-from gem_screening.utils.pipeline_constants import AFTER_STIM, BEFORE_STIM, CELL_ID, CELL_LABEL, CENTROID_X, CENTROID_Y, CONTROL_LABEL, FOV_CELLSORTER_X, FOV_CELLSORTER_Y, FOV_ID, FOV_X, FOV_Y, MASK_LABEL, POST_ILLUMINATION, PRE_ILLUMINATION, RATIO, REFSEG_LABEL, STIM_LABEL, MEASURE_LABEL, BEFORE_REF, AFTER_REF
-from gem_screening.well_data.well_classes import FieldOfView
+from gem_screening.infrastructure.constants import AFTER_STIM, BEFORE_STIM, CELL_ID, CELL_LABEL, CENTROID_X, CENTROID_Y, CONTROL_LABEL, FOV_CELLSORTER_X, FOV_CELLSORTER_Y, FOV_ID, FOV_X, FOV_Y, MASK_LABEL, POST_ILLUMINATION, PRE_ILLUMINATION, RATIO, REFSEG_LABEL, STIM_LABEL, MEASURE_LABEL, BEFORE_REF, AFTER_REF
+from gem_screening.experiment import FieldOfView
 
 
 logger = logging.getLogger(__name__)

@@ -1,4 +1,4 @@
-"""Public programmatic API for running GEM Screening workflows."""
+"""Top-level complete and rescue pipeline orchestration."""
 
 from gem_screening.workflows.complete import complete_pipeline
 from gem_screening.workflows.rescue import rescue_pipeline

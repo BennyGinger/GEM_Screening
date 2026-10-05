@@ -9,7 +9,7 @@ from a1_manager.microscope_hardware.nanopick.devices.injection_protocol import P
 from a1_manager.microscope_hardware.nanopick.injection_factory import get_pick_device
 from a1_manager.microscope_hardware.nanopick.devices.marZ import MarZ
 from gem_screening.settings.models import InjectionSettings, PipelineSettings
-from gem_screening.well_data.well_classes import Well
+from gem_screening.experiment import Well
 
 if TYPE_CHECKING:
     from pycromanager import Core
