@@ -27,3 +27,19 @@ build-backend = "hatchling.build"
 dev = [
     "pytest>=8.4.2",
 ]
+
+[tool.uv.workspace]
+members = [
+    "A1_manager",
+    "CP_server",
+    "CellTinder",
+    "Cellpose-kit",
+    "Progress_bar",
+]
+
+[tool.uv.sources]
+a1-manager = { workspace = true }
+cp-server = { workspace = true }
+celltinder = { workspace = true }
+cellpose-kit = { workspace = true }
+progress-bar = { workspace = true }

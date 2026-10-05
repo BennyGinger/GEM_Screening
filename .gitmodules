@@ -1,0 +1,20 @@
+[submodule "A1_manager"]
+	path = A1_manager
+	url = https://github.com/BennyGinger/A1_manager.git
+	branch = gui
+[submodule "CP_server"]
+	path = CP_server
+	url = https://github.com/BennyGinger/cp_server.git
+	branch = gui
+[submodule "CellTinder"]
+	path = CellTinder
+	url = https://github.com/BennyGinger/CellTinder.git
+	branch = gui
+[submodule "Cellpose-kit"]
+	path = Cellpose-kit
+	url = https://github.com/BennyGinger/Cellpose-kit.git
+	branch = gui
+[submodule "Progress_bar"]
+	path = Progress_bar
+	url = https://github.com/BennyGinger/Progress_bar.git
+	branch = gui
