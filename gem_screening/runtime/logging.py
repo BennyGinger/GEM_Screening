@@ -37,11 +37,20 @@ class QtLogHandler(logging.Handler):
         self.emitter.message.emit(message)
 
 
-def configure_logging(run_dir: Path) -> None:
+def configure_logging(
+    run_dir: Path,
+    *,
+    log_level: str | None = None,
+    logfile_name: str | None = None,
+) -> None:
     """Configure terminal/file logging while preserving the GUI handler."""
     host_log_folder = run_dir / "logs"
     host_log_folder.mkdir(parents=True, exist_ok=True)
-    logfile_path = host_log_folder / LOGFILE_NAME
+    level = (log_level or LOG_LEVEL).upper()
+    filename = logfile_name or LOGFILE_NAME
+    if Path(filename).name != filename:
+        raise ValueError("Logfile name must be a filename, not a path")
+    logfile_path = host_log_folder / filename
 
     root_logger = logging.getLogger()
     preserved_handlers = [
@@ -64,12 +73,12 @@ def configure_logging(run_dir: Path) -> None:
                 "console": {
                     "class": "logging.StreamHandler",
                     "formatter": "standard",
-                    "level": LOG_LEVEL,
+                    "level": level,
                 },
                 "rotating_file": {
                     "class": "logging.handlers.RotatingFileHandler",
                     "formatter": "standard",
-                    "level": LOG_LEVEL,
+                    "level": level,
                     "filename": str(logfile_path),
                     "mode": "a",
                     "maxBytes": MAX_BYTES,
@@ -80,7 +89,7 @@ def configure_logging(run_dir: Path) -> None:
             },
             "root": {
                 "handlers": ["console", "rotating_file"],
-                "level": LOG_LEVEL,
+                "level": level,
             },
         }
     )

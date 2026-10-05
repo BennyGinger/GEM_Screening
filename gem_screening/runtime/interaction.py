@@ -51,6 +51,11 @@ class PipelineInteraction(QObject):
         super().__init__()
         self.cancellation = cancellation
 
+    def check_cancelled(self) -> None:
+        """Stop at a safe workflow boundary when cancellation was requested."""
+        if self.cancellation is not None:
+            self.cancellation.raise_if_requested()
+
     def confirm(self, message: str) -> bool:
         request = InteractionRequest({"message": message})
         self.confirmation_requested.emit(request)

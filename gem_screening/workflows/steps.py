@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from a1_manager import A1Manager
@@ -23,7 +24,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-def scan_round1(a1_manager: A1Manager, settings: PipelineSettings, well_list: list[Well], fov_ids: list[str] | None = None) -> None:
+def scan_round1(a1_manager: A1Manager, settings: PipelineSettings, well_list: list[Well], fov_ids: list[str] | None = None, *, interaction: PipelineInteraction | None = None) -> None:
     """
     Scan all the wells in the dish grid for round 1 imaging.
     
@@ -33,12 +34,15 @@ def scan_round1(a1_manager: A1Manager, settings: PipelineSettings, well_list: li
         well_list (list[Well]): List of well objects to process.
         fov_ids (list[str] | None): Optional list of specific FOV IDs to image. If None, all positive FOVs will be imaged.
     """
-    for well_obj in progress_bar(well_list, desc="Scanning wells round 1", total=len(well_list)):
+    for index, well_obj in enumerate(progress_bar(well_list, desc="Scanning wells round 1", total=len(well_list)), 1):
+        if interaction is not None:
+            interaction.check_cancelled()
+        logger.info("Round 1 imaging: well %s (%s/%s)", well_obj.well, index, len(well_list))
         # Run flow
-        image_fovs(well_obj, a1_manager, settings, f"{MEASURE_LABEL}_1", fov_ids)
+        image_fovs(well_obj, a1_manager, settings, f"{MEASURE_LABEL}_1", fov_ids, cancel_check=interaction.check_cancelled if interaction else None)
     
 
-def scan_round2(a1_manager: A1Manager, settings: PipelineSettings, well_list: list[Well], fov_ids: list[str] | None = None) -> None:
+def scan_round2(a1_manager: A1Manager, settings: PipelineSettings, well_list: list[Well], fov_ids: list[str] | None = None, *, interaction: PipelineInteraction | None = None) -> None:
     """
     Scan the wells for round 2 imaging.
     
@@ -49,15 +53,18 @@ def scan_round2(a1_manager: A1Manager, settings: PipelineSettings, well_list: li
         fov_ids (list[str] | None): Optional list of specific FOV IDs to image. If None, all positive FOVs will be imaged.
     """
 
-    for well_obj in progress_bar(well_list, desc="Scanning wells round 2", total=len(well_list)):
+    for index, well_obj in enumerate(progress_bar(well_list, desc="Scanning wells round 2", total=len(well_list)), 1):
+        if interaction is not None:
+            interaction.check_cancelled()
+        logger.info("Round 2 imaging: well %s (%s/%s)", well_obj.well, index, len(well_list))
         # Run flow
-        image_fovs(well_obj, a1_manager, settings, f"{MEASURE_LABEL}_2", fov_ids)
+        image_fovs(well_obj, a1_manager, settings, f"{MEASURE_LABEL}_2", fov_ids, cancel_check=interaction.check_cancelled if interaction else None)
     
 
     # Wait for all images to be processed
     well_ids = [w.well_id for w in well_list]
     logger.debug(f"Polling for completion of image processing for wells: {', '.join(well_ids)}")
-    wait_for_completion(well_ids, timeout=settings.server_settings.server_timeout_sec)
+    wait_for_completion(well_ids, timeout=settings.server_settings.server_timeout_sec, cancel_check=interaction.check_cancelled if interaction else None)
     
 
 def stimulate_dish(settings: PipelineSettings,
@@ -79,7 +86,7 @@ def stimulate_dish(settings: PipelineSettings,
     if inj_device is not None:
         logger.info("Automated injection is enabled in settings. Performing ligand addition using injection device.") 
         inj_sets = settings.injection_settings
-        _injection(well_sublist, inj_device, inj_sets, injection_point)
+        _injection(well_sublist, inj_device, inj_sets, injection_point, cancel_check=interaction.check_cancelled if interaction else None)
     else:
         try:
             logger.info("Automated injection is disabled in settings. Please perform the ligand addition manually.") 
@@ -92,7 +99,7 @@ def stimulate_dish(settings: PipelineSettings,
             raise
 
 
-def illuminate(a1_manager: A1Manager, settings: PipelineSettings, plate_obj: Plate) -> None:
+def illuminate(a1_manager: A1Manager, settings: PipelineSettings, plate_obj: Plate, *, interaction: PipelineInteraction | None = None) -> None:
     """
     Illuminate the cells in the well object.
     """
@@ -101,10 +108,17 @@ def illuminate(a1_manager: A1Manager, settings: PipelineSettings, plate_obj: Pla
     if not stim_sets.do_illuminate:
         logger.info("Illumination step is disabled in settings. Skipping illumination.")
         return
+    if interaction is not None:
+        interaction.check_cancelled()
     
     create_stim_masks(plate_obj, erosion_factor=stim_sets.erosion_factor)
+    if interaction is not None:
+        interaction.check_cancelled()
                         
-    illuminate_fovs(plate_obj, a1_manager, settings)
+    illuminate_fovs(plate_obj, a1_manager, settings, cancel_check=interaction.check_cancelled if interaction else None)
+
+    if interaction is not None:
+        interaction.check_cancelled()
 
     update_control_intensities(plate_obj.positive_fovs, csv_path=plate_obj.csv_path)
 
@@ -122,7 +136,7 @@ def get_identifier(well_sublist: list[Well], list_type: str) -> str:
     return ''
 
 
-def _injection(well_sublist: list[Well], inj_device: Injection, inj_sets: InjectionSettings, injection_point: int) -> None:
+def _injection(well_sublist: list[Well], inj_device: Injection, inj_sets: InjectionSettings, injection_point: int, *, cancel_check: Callable[[], None] | None = None) -> None:
     """
     Perform the injection for a list of wells using the specified injection device and settings.
     Args:
@@ -144,6 +158,8 @@ def _injection(well_sublist: list[Well], inj_device: Injection, inj_sets: Inject
         raise ValueError(f"Invalid injection point index: {injection_point}. Must be between 0 and 4.")
     
     for well in progress_bar(well_sublist, desc="Performing injection", total=len(well_sublist)):
+        if cancel_check is not None:
+            cancel_check()
         for pos in position:
             inj_device.move_to_position(well, position=pos)
             #print(f"Injecting {inj_sets.inject_vol_ul/len(position)} uL into well {well.well} at position {pos}")

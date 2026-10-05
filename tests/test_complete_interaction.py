@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from gem_screening.settings.models import PipelineSettings, ServerSettings
-from gem_screening.workflows.complete import run_complete_flow
+from gem_screening.workflows.complete import complete_pipeline, run_complete_flow
 
 
 def test_complete_flow_uses_interaction_and_saves_tuned_settings(tmp_path, monkeypatch):
@@ -27,6 +27,9 @@ def test_complete_flow_uses_interaction_and_saves_tuned_settings(tmp_path, monke
         def __init__(self):
             self.tuning_context = None
             self.csv_path = None
+
+        def check_cancelled(self):
+            pass
 
         def tune_segmentation(self, settings, **context):
             self.tuning_context = context
@@ -53,3 +56,28 @@ def test_complete_flow_uses_interaction_and_saves_tuned_settings(tmp_path, monke
         config_dir / "pipeline_settings.json"
     ).server_settings.size == 17
     external_module.run_celltinder.assert_not_called()
+
+
+def test_complete_pipeline_passes_gui_autofocus_review_to_a1(tmp_path, monkeypatch):
+    import gem_screening.workflows.complete as complete_module
+
+    settings = PipelineSettings()
+    manager = object()
+    grid = {"A1": {}}
+    interaction = MagicMock()
+    monkeypatch.setattr(
+        complete_module, "initialize_pipeline",
+        lambda _settings, run_dir: (manager, run_dir, MagicMock(), "test-run"),
+    )
+    launch = MagicMock(return_value=grid)
+    flow = MagicMock()
+    monkeypatch.setattr(complete_module, "launch_dish_workflow", launch)
+    monkeypatch.setattr(complete_module, "run_complete_flow", flow)
+
+    complete_pipeline(settings, run_dir=tmp_path, interaction=interaction)
+
+    assert launch.call_args.kwargs["review_callback"] == interaction.run_autofocus_check
+    assert launch.call_args.kwargs["cancel_check"] == interaction.check_cancelled
+    flow.assert_called_once_with(
+        grid, manager, tmp_path, "test-run", settings, interaction=interaction
+    )

@@ -50,7 +50,7 @@ def test_analysis_only_rescue_does_not_start_docker(
     extract.assert_called_once_with(
         plate.positive_fovs, true_cell_threshold=42, csv_path=plate.csv_path)
     celltinder.assert_called_once_with(plate.csv_path, crop_size=251)
-    illuminate.assert_called_once_with(manager, settings, plate)
+    illuminate.assert_called_once_with(manager, settings, plate, interaction=None)
 
 
 @patch("gem_screening.workflows.rescue.flow.illuminate")
@@ -76,7 +76,7 @@ def test_analysis_only_rescue_uses_embedded_cell_selection(
     )
     standalone_celltinder.assert_not_called()
     extract.assert_called_once()
-    illuminate.assert_called_once_with(manager, settings, plate)
+    illuminate.assert_called_once_with(manager, settings, plate, interaction=interaction)
 
 
 @patch("gem_screening.workflows.rescue.flow._run_analysis")

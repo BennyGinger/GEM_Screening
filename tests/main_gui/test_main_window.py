@@ -1,4 +1,5 @@
 import time
+import logging
 from threading import Event
 
 from PyQt6.QtWidgets import QApplication, QMessageBox
@@ -105,6 +106,41 @@ def test_pipeline_failure_is_reported_and_unlocks_settings(tmp_path):
     assert "Failed with an unexpected error" in output
     assert "RuntimeError: simulated pipeline failure" in output
     assert project_panel.savedir_edit.isEnabled()
+    window.close()
+
+
+def test_worker_log_reaches_persistent_console(tmp_path):
+    def runner(_settings, _interaction, _cancellation):
+        logging.getLogger("cp_server.compose_manager").warning(
+            "simulated server startup message"
+        )
+
+    window = MainGui(runner_factory=lambda _run_dir, _rescue: runner)
+    window._new_experiment()
+    project_panel = window.settings_window.project_settings_panel
+    project_panel.savedir_edit.setText(str(tmp_path))
+    project_panel.experiment_name_edit.setText("logging_test")
+    window.start_button.click()
+    wait_until(lambda: not window.run_started)
+
+    assert "simulated server startup message" in window.terminal_widget.toPlainText()
+    window.close()
+
+
+def test_console_keeps_scroll_position_when_new_logs_arrive():
+    window = MainGui()
+    window.show()
+    for index in range(300):
+        window.append_terminal(f"Earlier log line {index}")
+    APP.processEvents()
+
+    scrollbar = window.terminal_widget.verticalScrollBar()
+    assert scrollbar.maximum() > 0
+    scrollbar.setValue(0)
+    window.append_terminal("Latest log line")
+
+    assert scrollbar.value() == 0
+    assert "Latest log line" in window.terminal_widget.toPlainText()
     window.close()
 
 

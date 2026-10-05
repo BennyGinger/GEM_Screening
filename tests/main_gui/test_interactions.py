@@ -1,6 +1,7 @@
 import time
 from pathlib import Path
 
+import numpy as np
 from PyQt6.QtCore import QThread, pyqtSignal
 from PyQt6.QtWidgets import QApplication, QPushButton, QWidget
 
@@ -183,4 +184,60 @@ def test_cancel_button_releases_worker_waiting_at_prompt(tmp_path):
 
     assert window._pipeline_outcome == "cancelled"
     assert window._prompt_window is None
+    window.close()
+
+
+def test_autofocus_review_runs_in_main_thread_and_returns_choice(tmp_path, monkeypatch):
+    import a1_manager.autofocus.autofocus_gui as autofocus_module
+
+    events = []
+
+    class FakeAutofocus(QWidget):
+        result_signal = pyqtSignal(str)
+
+        def __init__(self, image):
+            super().__init__()
+            assert QThread.currentThread() is APP.thread()
+            events.append(("image", image.shape))
+
+    monkeypatch.setattr(autofocus_module, "AutofocusWidget", FakeAutofocus)
+
+    def runner(_settings, interaction, _cancel):
+        events.append(("choice", interaction.run_autofocus_check(np.zeros((8, 8)))))
+
+    window = MainGui(runner_factory=lambda _path, _rescue: runner)
+    start_mock_run(window, tmp_path)
+    wait_until(lambda: window.workspace_tabs.count() == 2)
+    assert window.workspace_tabs.tabText(1) == "Autofocus review"
+    assert not window.settings_window.project_settings_panel.savedir_edit.isEnabled()
+
+    window.task_widget.result_signal.emit("restart")
+    wait_until(lambda: not window.run_started)
+    assert events == [("image", (8, 8)), ("choice", "restart")]
+    assert window._pipeline_outcome == "completed"
+    window.close()
+
+
+def test_closing_autofocus_review_cancels_worker(tmp_path, monkeypatch):
+    import a1_manager.autofocus.autofocus_gui as autofocus_module
+
+    class FakeAutofocus(QWidget):
+        result_signal = pyqtSignal(str)
+
+        def __init__(self, _image):
+            super().__init__()
+
+    monkeypatch.setattr(autofocus_module, "AutofocusWidget", FakeAutofocus)
+    window = MainGui(
+        runner_factory=lambda _path, _rescue: (
+            lambda _settings, interaction, _cancel: interaction.run_autofocus_check(
+                np.zeros((8, 8))
+            )
+        )
+    )
+    start_mock_run(window, tmp_path)
+    wait_until(lambda: window.workspace_tabs.count() == 2)
+    window.close_current_task()
+    wait_until(lambda: not window.run_started)
+    assert window._pipeline_outcome == "cancelled"
     window.close()

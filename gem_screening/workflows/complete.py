@@ -29,7 +29,11 @@ def complete_pipeline(
     interaction: PipelineInteraction | None = None,
 ) -> None:
     """Run a complete GEM Screening acquisition and analysis workflow."""
+    if interaction is not None:
+        interaction.check_cancelled()
     a1_manager, run_dir, logger, run_id = initialize_pipeline(settings, run_dir=run_dir)
+    if interaction is not None:
+        interaction.check_cancelled()
 
     if settings.dish_settings.dish_name.lower() not in ["35mm", "96well", "384well"]:
         try:
@@ -41,10 +45,14 @@ def complete_pipeline(
             return
 
     try:
+        dish_kwargs = settings.dish_settings.model_dump(exclude={"well_grouping"})
+        if interaction is not None:
+            dish_kwargs["review_callback"] = interaction.run_autofocus_check
+            dish_kwargs["cancel_check"] = interaction.check_cancelled
         dish_grid = launch_dish_workflow(
             a1_manager,
             run_dir,
-            **settings.dish_settings.model_dump(exclude={"well_grouping"}),
+            **dish_kwargs,
         )
         logger.info("Generated dish grid")
         logger.debug("dish_grid: %s", dish_grid)
@@ -55,6 +63,8 @@ def complete_pipeline(
         return
 
     try:
+        if interaction is not None:
+            interaction.check_cancelled()
         run_complete_flow(
             dish_grid, a1_manager, run_dir, run_id, settings, interaction=interaction
         )
@@ -103,10 +113,15 @@ def run_complete_flow(
     from gem_screening.workflows.steps import scan_round1, scan_round2, stimulate_dish
 
     dev_mode = settings.dev_mode
+    if interaction is not None:
+        interaction.check_cancelled()
     with ComposeManager(dev_mode=dev_mode):
         # Clean up the redis server
         cleanup_stale()  
+        if interaction is not None:
+            interaction.check_cancelled()
 
+        logger.info("Preparing segmentation settings")
         # Optimize Segmentation settings
         if interaction is None:
             from gem_screening.gui.segmentation_tuning import launch_tune_seg_gui
@@ -122,6 +137,8 @@ def run_complete_flow(
             settings.server_settings = server_settings
             settings.to_json(run_dir / CONFIG_FOLDER / "pipeline_settings.json")
             logger.info(f"Updated server settings: {settings.server_settings}")
+        if interaction is not None:
+            interaction.check_cancelled()
         
         # Initialize plate object
         plate = Plate(run_dir=run_dir, run_id=run_id, dish_grid=dish_grid)
@@ -133,9 +150,14 @@ def run_complete_flow(
         inj_device = setup_injection_device(a1_manager, settings)
         
         for well_sublist in plate.well_sublists(grouping_method=grouping_method):
+            if interaction is not None:
+                interaction.check_cancelled()
+            logger.info("Processing well group: %s", ", ".join(w.well for w in well_sublist))
             # Start imaging
-            scan_round1(a1_manager, settings, well_sublist)
+            scan_round1(a1_manager, settings, well_sublist, interaction=interaction)
             plate.to_json()
+            if interaction is not None:
+                interaction.check_cancelled()
             
             dish_name = settings.dish_settings.dish_name.lower()
             if dish_name == "96well":
@@ -150,22 +172,31 @@ def run_complete_flow(
                 injection_point=injection_point, interaction=interaction,
             )
 
-            scan_round2(a1_manager, settings, well_sublist)
+            scan_round2(a1_manager, settings, well_sublist, interaction=interaction)
             plate.to_json()
+            if interaction is not None:
+                interaction.check_cancelled()
             
             assign_masks_to_fovs(well_sublist)
 
             sublist_fovs = [fov for well in well_sublist for fov in well.positive_fovs]
+            logger.info("Extracting cell measurements for %s FOVs", len(sublist_fovs))
             extract_measure_intensities(sublist_fovs,
                                 true_cell_threshold=settings.stim_settings.true_cell_threshold,
                                 csv_path=plate.csv_path)
+            if interaction is not None:
+                interaction.check_cancelled()
 
+        if interaction is not None:
+            interaction.check_cancelled()
+        logger.info("Opening CellTinder for cell selection")
         if interaction is None:
             run_celltinder(plate.csv_path, crop_size=settings.stim_settings.crop_size)
         else:
             interaction.select_cells(
                 plate.csv_path, crop_size=settings.stim_settings.crop_size
             )
+            interaction.check_cancelled()
         
         # illuminate(a1_manager, settings, plate)
         logger.info("Completed processing for all wells.")

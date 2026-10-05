@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T", bound=np.generic)
 BATCH_SIZE = 1
 
-def image_fovs(well_obj: Well, a1_manager: A1Manager, settings: PipelineSettings, imaging_loop: str, fov_ids: list[str] | None = None) -> None:
+def image_fovs(well_obj: Well, a1_manager: A1Manager, settings: PipelineSettings, imaging_loop: str, fov_ids: list[str] | None = None, *, cancel_check: Callable[[], None] | None = None) -> None:
     """
     Take images of specified field of views in the well.
     
@@ -51,7 +51,7 @@ def image_fovs(well_obj: Well, a1_manager: A1Manager, settings: PipelineSettings
     steps = _create_imaging_steps(settings, imaging_loop, server_settings)
 
     # Process the FOVs as batches
-    _process_fovs(imaging_loop, fovs_to_process, a1_manager, steps)
+    _process_fovs(imaging_loop, fovs_to_process, a1_manager, steps, cancel_check=cancel_check)
 
 def snap_image(coord: StageCoord, input_preset: PresetMeasure | PresetControl | PresetRefseg, a1_manager: A1Manager) -> NDArray:
     # Move to position
@@ -106,7 +106,7 @@ def _init_settings(well_obj: Well, settings: PipelineSettings, fovs_to_process: 
     server_settings.total_fovs = len(fovs_to_process)
     return server_settings
 
-def _process_fovs(imaging_loop: str, fovs_to_process: list[FieldOfView], a1_manager: A1Manager, steps: list[tuple]) -> None:
+def _process_fovs(imaging_loop: str, fovs_to_process: list[FieldOfView], a1_manager: A1Manager, steps: list[tuple], *, cancel_check: Callable[[], None] | None = None) -> None:
     """
     Process the FOVs in batches, taking images and applying post-processing functions.
     """
@@ -119,8 +119,13 @@ def _process_fovs(imaging_loop: str, fovs_to_process: list[FieldOfView], a1_mana
     total_fovs = len(fovs_to_process)
     
     # Process each FOV
-    for fov in progress_bar(fovs_to_process, desc=f"Imaging {imaging_loop} of well {well}", total=total_fovs):
+    for index, fov in enumerate(progress_bar(fovs_to_process, desc=f"Imaging {imaging_loop} of well {well}", total=total_fovs), 1):
+        if cancel_check is not None:
+            cancel_check()
+        logger.info("%s: FOV %s (%s/%s)", imaging_loop, fov.fov_id, index, total_fovs)
         for i, (loop_name, preset, post_fn) in enumerate(steps):
+            if cancel_check is not None:
+                cancel_check()
             img_path = snap(fov, input_preset=preset, imaging_loop=loop_name)
             if img_path is None:
                 continue
@@ -128,6 +133,9 @@ def _process_fovs(imaging_loop: str, fovs_to_process: list[FieldOfView], a1_mana
             if len(batches[i]) >= BATCH_SIZE:
                 post_fn(batches[i])
                 batches[i] = []
+
+    if cancel_check is not None:
+        cancel_check()
 
     # Process any remaining images in each batch
     for batch, (_, _, post_fn) in zip(batches, steps):

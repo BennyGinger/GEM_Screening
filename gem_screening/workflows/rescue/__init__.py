@@ -19,11 +19,15 @@ def rescue_pipeline(
     interaction: PipelineInteraction | None = None,
 ) -> None:
     """Resume processing for an existing GEM Screening run."""
+    if interaction is not None:
+        interaction.check_cancelled()
     plate = load_saved_plate(run_dir, well_selection)
     if settings is None:
         settings = load_saved_settings(run_dir)
 
     a1_manager, logger = initialize_rescue_pipeline(settings, run_dir, plate.run_id)
+    if interaction is not None:
+        interaction.check_cancelled()
 
     # Import after runtime environment and logging have been configured.
     from gem_screening.workflows.rescue.flow import run_rescue_flow

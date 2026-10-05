@@ -1,5 +1,6 @@
 from __future__ import annotations
 import logging
+from collections.abc import Callable
 from typing import TypeVar
 
 from a1_manager import A1Manager
@@ -60,7 +61,7 @@ def create_stim_masks(plate_obj: Plate,
     logger.info(f"All stimulation masks created for well {plate_obj.wells}.")
     plate_obj.to_json()
 
-def illuminate_fovs(plate_obj: Plate, a1_manager: A1Manager, settings: PipelineSettings) -> None:
+def illuminate_fovs(plate_obj: Plate, a1_manager: A1Manager, settings: PipelineSettings, *, cancel_check: Callable[[], None] | None = None) -> None:
     """
     Illuminate all cells in the FOVs of a well object, and capture control images before and after illumination.
     Args:
@@ -73,21 +74,25 @@ def illuminate_fovs(plate_obj: Plate, a1_manager: A1Manager, settings: PipelineS
     # control loop before illumination
     if do_control:
         for well_obj in plate_obj.well_list:
-            image_fovs(well_obj, a1_manager, settings, f"{CONTROL_LABEL}_1")
+            if cancel_check is not None:
+                cancel_check()
+            image_fovs(well_obj, a1_manager, settings, f"{CONTROL_LABEL}_1", cancel_check=cancel_check)
         logger.info("Captured control images before illumination.")
     
     # Illuminate all FOVs
-    _illuminate_cells(plate_obj.positive_fovs, a1_manager, settings.stim_settings.preset)
+    _illuminate_cells(plate_obj.positive_fovs, a1_manager, settings.stim_settings.preset, cancel_check=cancel_check)
     logger.info("Illuminated all cells in the FOVs.")
     
     # control loop after illumination
     if do_control:
         for well_obj in plate_obj.well_list:
-            image_fovs(well_obj, a1_manager, settings, f"{CONTROL_LABEL}_2")
+            if cancel_check is not None:
+                cancel_check()
+            image_fovs(well_obj, a1_manager, settings, f"{CONTROL_LABEL}_2", cancel_check=cancel_check)
         logger.info("Captured control images after illumination.")
 
 ################## Helper Functions ##################
-def _illuminate_cells(fovs: list[FieldOfView], a1_manager: A1Manager, stim_preset: PresetStim) -> None:
+def _illuminate_cells(fovs: list[FieldOfView], a1_manager: A1Manager, stim_preset: PresetStim, *, cancel_check: Callable[[], None] | None = None) -> None:
     """
     Illuminate all cells in the FOVs.
     Args:
@@ -104,6 +109,8 @@ def _illuminate_cells(fovs: list[FieldOfView], a1_manager: A1Manager, stim_prese
     for fov in progress_bar(fovs,
                             desc="Illuminating cells",
                            total=len(fovs)):
+        if cancel_check is not None:
+            cancel_check()
         # Move to the FOV
         a1_manager.set_stage_position(fov.fov_coord)
         

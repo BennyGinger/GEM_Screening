@@ -17,11 +17,11 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QMainWindow,
     QMessageBox,
+    QPlainTextEdit,
     QPushButton,
     QSplitter,
     QStackedWidget,
     QTabWidget,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
     QSizePolicy,
@@ -137,8 +137,9 @@ class MainGui(QMainWindow):
         root_layout.addWidget(self.workspace_tabs, 1)
 
         bottom_splitter = QSplitter(Qt.Orientation.Horizontal)
-        self.terminal_widget = QTextEdit()
+        self.terminal_widget = QPlainTextEdit()
         self.terminal_widget.setReadOnly(True)
+        self.terminal_widget.setMaximumBlockCount(20000)
         self.terminal_widget.setPlaceholderText("Pipeline console")
         self.terminal_widget.setStyleSheet(
             "background-color: #23272e; color: #f8f8f2;"
@@ -467,6 +468,9 @@ class MainGui(QMainWindow):
         self.pipeline_interaction.confirmation_requested.connect(
             self._handle_confirmation_request
         )
+        self.pipeline_interaction.autofocus_requested.connect(
+            self._handle_autofocus_request
+        )
         self.pipeline_interaction.segmentation_requested.connect(
             self._handle_segmentation_request
         )
@@ -494,6 +498,7 @@ class MainGui(QMainWindow):
 
         self.pipeline_thread = thread
         self.pipeline_worker = worker
+        self.terminal_handler.setLevel(settings_snapshot.logging_settings.log_level.upper())
         self.settings_window.save_status.clear()
         self.settings_window.set_read_only(True)
         self.run_started = True
@@ -593,6 +598,34 @@ class MainGui(QMainWindow):
         self.close_task_button.setVisible(True)
         self.close_task_button.setText("Cancel current task")
         self._update_run_buttons()
+
+    def _handle_autofocus_request(self, request: InteractionRequest) -> None:
+        try:
+            if self.cancellation is not None:
+                self.cancellation.raise_if_requested()
+            from a1_manager.autofocus.autofocus_gui import AutofocusWidget
+
+            widget = AutofocusWidget(request.payload["image"])
+            if self.cancellation is not None and self.cancellation.is_requested():
+                widget.deleteLater()
+                raise PipelineCancelled()
+            widget.result_signal.connect(
+                lambda result: self._autofocus_finished(widget, result)
+            )
+            self._show_pipeline_task(widget, "Autofocus review", request)
+            self.append_terminal("[Pipeline] Waiting for autofocus review.")
+        except Exception as error:
+            request.reject(error)
+            self.append_terminal(f"[Autofocus] Failed to open: {error}")
+
+    def _autofocus_finished(self, widget: QWidget, result: str) -> None:
+        if widget is not self.task_widget or self._active_request is None:
+            return
+        request = self._active_request
+        self._active_request = None
+        request.resolve(result)
+        self.append_terminal(f"[Autofocus] User selected: {result}.")
+        self.close_current_task()
 
     def _handle_segmentation_request(self, request: InteractionRequest) -> None:
         try:
@@ -732,7 +765,14 @@ class MainGui(QMainWindow):
             self.workspace_tabs.setCurrentIndex(0)
 
     def append_terminal(self, message: str) -> None:
-        self.terminal_widget.append(message)
+        scrollbar = self.terminal_widget.verticalScrollBar()
+        at_bottom = scrollbar.value() >= scrollbar.maximum() - 2
+        previous_position = scrollbar.value()
+        self.terminal_widget.appendPlainText(message)
+        if at_bottom:
+            scrollbar.setValue(scrollbar.maximum())
+        else:
+            scrollbar.setValue(previous_position)
 
     def closeEvent(self, event) -> None:
         if self.pipeline_thread is not None and self.pipeline_thread.isRunning():

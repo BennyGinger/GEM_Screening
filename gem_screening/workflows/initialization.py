@@ -57,7 +57,11 @@ def initialize_pipeline(
     load_pipeline_env(run_dir, base_url=base_url, **logging_sets.model_dump())
     
     # Set up logging
-    configure_logging(run_dir)
+    configure_logging(
+        run_dir,
+        log_level=logging_sets.log_level,
+        logfile_name=logging_sets.logfile_name,
+    )
     logger = get_logger("main")
     
     # Log the run directory and run ID
@@ -99,7 +103,11 @@ def initialize_rescue_pipeline(settings: PipelineSettings, run_dir: Path, run_id
     load_pipeline_env(run_dir, base_url=base_url, **logging_sets.model_dump())
     
     # Set up logging using existing run_dir (safe to call multiple times)
-    configure_logging(run_dir)
+    configure_logging(
+        run_dir,
+        log_level=logging_sets.log_level,
+        logfile_name=logging_sets.logfile_name,
+    )
     logger = get_logger("main")
     
     # Log the rescue initialization

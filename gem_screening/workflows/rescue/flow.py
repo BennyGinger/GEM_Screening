@@ -35,7 +35,10 @@ def run_rescue_flow(
     """
     Run the rescue pipeline workflow for the given list of well objects.
     """
+    if interaction is not None:
+        interaction.check_cancelled()
     rescue_plan = assess_rescue(plate_obj)
+    logger.info("Rescue plan: %s", rescue_plan["case"])
     logger.debug(f"Rescue plan for wells {plate_obj.wells}: {rescue_plan}")
 
     # Analysis-only recovery does not use the segmentation/tracking server. This
@@ -45,14 +48,20 @@ def run_rescue_flow(
         _run_analysis(a1_manager, settings, plate_obj, interaction=interaction)
         return
 
+    if interaction is not None:
+        interaction.check_cancelled()
     with ComposeManager(dev_mode=settings.dev_mode):
         # Clean up the redis server
         cleanup_stale()
+        if interaction is not None:
+            interaction.check_cancelled()
 
         match rescue_plan["case"]:
             case "round1":
                 # Register masks (R1 only in this case)
                 if rescue_plan["masks_to_register"]:
+                    if interaction is not None:
+                        interaction.check_cancelled()
                     register_masks_batch_client(run_id=plate_obj.run_id,
                                                 mask_paths=rescue_plan["masks_to_register"],
                                                 total_fovs=rescue_plan["total_fovs"])
@@ -64,6 +73,8 @@ def run_rescue_flow(
             case "round2":
                 # Register all masks (R1 + R2, server will sort them)
                 if rescue_plan["masks_to_register"]:
+                    if interaction is not None:
+                        interaction.check_cancelled()
                     register_masks_batch_client(run_id=plate_obj.run_id,
                                                 mask_paths=rescue_plan["masks_to_register"],
                                                 total_fovs=rescue_plan["total_fovs"],
@@ -72,9 +83,12 @@ def run_rescue_flow(
                 # If all images already exist, only wait for re-registered masks
                 # to finish tracking; do not prompt for ligand or reacquire data.
                 if not rescue_plan["fovs_to_process"]:
+                    wait_kwargs = {"timeout": settings.server_settings.server_timeout_sec}
+                    if interaction is not None:
+                        wait_kwargs["cancel_check"] = interaction.check_cancelled
                     wait_for_completion(
                         [well.well_id for well in plate_obj.well_list],
-                        timeout=settings.server_settings.server_timeout_sec)
+                        **wait_kwargs)
                     _run_analysis(a1_manager, settings, plate_obj, interaction=interaction)
                     return
 
@@ -92,17 +106,24 @@ def _run_analysis(
     interaction: PipelineInteraction | None = None,
 ) -> None:
     """Create/complete the analysis CSV, run CellTinder, then optionally illuminate."""
+    if interaction is not None:
+        interaction.check_cancelled()
+    logger.info("Rescue analysis: extracting cell measurements")
     extract_measure_intensities(
         plate_obj.positive_fovs,
         true_cell_threshold=settings.stim_settings.true_cell_threshold,
         csv_path=plate_obj.csv_path)
+    if interaction is not None:
+        interaction.check_cancelled()
+    logger.info("Rescue analysis: opening CellTinder")
     if interaction is None:
         run_celltinder(plate_obj.csv_path, crop_size=settings.stim_settings.crop_size)
     else:
         interaction.select_cells(
             plate_obj.csv_path, crop_size=settings.stim_settings.crop_size
         )
-    illuminate(a1_manager, settings, plate_obj)
+        interaction.check_cancelled()
+    illuminate(a1_manager, settings, plate_obj, interaction=interaction)
 
 
 ################# Helper functions for workflows #################
@@ -129,9 +150,11 @@ def _from_scan(
     
     # Run flow from round 1
     for well_sublist in plate_obj.well_sublists(grouping_method=list_type):
+        if interaction is not None:
+            interaction.check_cancelled()
         if do_round1:
             for well_obj in well_sublist:
-                image_fovs(well_obj, a1_manager, settings, f"{MEASURE_LABEL}_1", fov_ids)
+                image_fovs(well_obj, a1_manager, settings, f"{MEASURE_LABEL}_1", fov_ids, cancel_check=interaction.check_cancelled if interaction else None)
             fov_ids = None  # After round 1, image all FOVs in round 2
             plate_obj.to_json()
         try:
@@ -142,8 +165,10 @@ def _from_scan(
         except PipelineQuit:
             logger.info("User chose to quit the pipeline during imaging/stimulation.")
             raise
-        scan_round2(a1_manager, settings, well_sublist, fov_ids)
+        scan_round2(a1_manager, settings, well_sublist, fov_ids, interaction=interaction)
         plate_obj.to_json()
+        if interaction is not None:
+            interaction.check_cancelled()
         
         extract_measure_intensities(plate_obj.positive_fovs,
                                 true_cell_threshold=settings.stim_settings.true_cell_threshold,
@@ -155,7 +180,8 @@ def _from_scan(
         interaction.select_cells(
             plate_obj.csv_path, crop_size=settings.stim_settings.crop_size
         )
+        interaction.check_cancelled()
     
-    illuminate(a1_manager, settings, plate_obj)
+    illuminate(a1_manager, settings, plate_obj, interaction=interaction)
     
     logger.info(f"Completed processing for well: {plate_obj.wells}")

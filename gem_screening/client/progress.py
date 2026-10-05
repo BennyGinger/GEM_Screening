@@ -1,4 +1,4 @@
-from typing import Any, Protocol, runtime_checkable, cast
+from typing import Any, Callable, Protocol, runtime_checkable, cast
 import logging
 import requests
 import time
@@ -55,7 +55,8 @@ def _poll_active_wells(active_wells: list[str],
                       total_initial_remaining: int,
                       poll_interval: float,
                       timeout: float | None,
-                      well_ids: list[str]) -> None:
+                      well_ids: list[str],
+                      cancel_check: Callable[[], None] | None = None) -> None:
     def _create_progress_bar(total: int, wells_count: int) -> ProgressBar:
         tqdm_class = get_corresponding_tqdm()
         return cast(ProgressBar, tqdm_class(
@@ -104,10 +105,19 @@ def _poll_active_wells(active_wells: list[str],
     start_time = time.monotonic()
     try:
         while active_wells:
+            if cancel_check is not None:
+                cancel_check()
             _check_timeout(start_time, timeout, active_wells)
             time.sleep(poll_interval)
+            if cancel_check is not None:
+                cancel_check()
             remaining_map, still_active = _poll_status_for_wells(active_wells)
             new_total_remaining = sum(remaining_map.values())
+            if new_total_remaining != prev_total_remaining:
+                logger.info(
+                    "Server processing: %s images remaining across %s wells",
+                    new_total_remaining, len(still_active),
+                )
             prev_total_remaining = _update_progress_bar(pbar, prev_total_remaining, new_total_remaining)
             active_wells = still_active
         _finish_progress_bar(pbar, prev_total_remaining)
@@ -118,7 +128,8 @@ def _poll_active_wells(active_wells: list[str],
 
 def wait_for_completion(well_id: str | list[str],
                         poll_interval: float = 1.,
-                        timeout: float | None = None) -> None:
+                        timeout: float | None = None,
+                        *, cancel_check: Callable[[], None] | None = None) -> None:
     """
     Wait until one or more wells complete processing, displaying a single aggregated progress bar.
     For each well, polls GET {FASTAPI_URL}/process/{well_id}/status until all are "finished".
@@ -132,6 +143,8 @@ def wait_for_completion(well_id: str | list[str],
         requests.HTTPError: If any status request fails.
     """
     well_ids = _normalize_well_ids(well_id)
+    if cancel_check is not None:
+        cancel_check()
     if not well_ids:
         logger.info("No well IDs provided; nothing to wait for.")
         return
@@ -139,4 +152,4 @@ def wait_for_completion(well_id: str | list[str],
     if not active_wells or total_initial_remaining == 0:
         logger.info("All requested wells are already finished.")
         return
-    _poll_active_wells(active_wells, total_initial_remaining, poll_interval, timeout, well_ids)
+    _poll_active_wells(active_wells, total_initial_remaining, poll_interval, timeout, well_ids, cancel_check=cancel_check)

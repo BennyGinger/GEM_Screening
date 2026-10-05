@@ -33,6 +33,25 @@ def test_qt_log_handler_survives_pipeline_logging_configuration(tmp_path):
     handler.close()
 
 
+def test_run_logging_uses_selected_level_and_filename(tmp_path):
+    root = logging.getLogger()
+    previous_level = root.level
+    try:
+        configure_logging(tmp_path, log_level="DEBUG", logfile_name="experiment.log")
+        logger = logging.getLogger("gem_screening.logging_test")
+        logger.debug("selected debug message")
+        for handler in root.handlers:
+            handler.flush()
+
+        assert "selected debug message" in (tmp_path / "logs" / "experiment.log").read_text()
+    finally:
+        for handler in list(root.handlers):
+            if not isinstance(handler, QtLogHandler):
+                root.removeHandler(handler)
+                handler.close()
+        root.setLevel(previous_level)
+
+
 def test_pipeline_worker_emits_completion():
     results = []
     worker = PipelineWorker(
