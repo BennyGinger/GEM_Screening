@@ -89,7 +89,7 @@ def run_complete_flow(dish_grid: dict[str, dict[int, StageCoord]], a1_manager: A
 
         run_celltinder(plate.csv_path, crop_size=settings.stim_settings.crop_size)
         
-        # illuminate(a1_manager, settings, plate)
+        illuminate(a1_manager, settings, plate)
         logger.info("Completed processing for all wells.")
 
 
