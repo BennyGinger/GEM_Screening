@@ -10,6 +10,7 @@ from PyQt6.QtCore import QObject, pyqtSignal
 from gem_screening.settings.models import PipelineSettings, ServerSettings
 
 if TYPE_CHECKING:
+    from a1_manager import A1Manager
     from gem_screening.runtime.worker import CancellationToken
 
 
@@ -68,8 +69,12 @@ class PipelineInteraction(QObject):
         self.confirmation_requested.emit(request)
         return bool(request.wait(self.cancellation))
 
-    def run_autofocus_check(self, image: Any) -> str:
-        request = InteractionRequest({"image": image})
+    def run_autofocus_check(self, a1_manager: A1Manager) -> str:
+        """
+        Wait for the user to accept or quit live focus adjustment.
+        """
+        self.check_cancelled()
+        request = InteractionRequest({"a1_manager": a1_manager})
         self.autofocus_requested.emit(request)
         return str(request.wait(self.cancellation))
 

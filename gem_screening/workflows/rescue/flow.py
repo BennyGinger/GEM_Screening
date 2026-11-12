@@ -112,7 +112,8 @@ def _run_analysis(
     extract_measure_intensities(
         plate_obj.positive_fovs,
         true_cell_threshold=settings.stim_settings.true_cell_threshold,
-        csv_path=plate_obj.csv_path)
+        csv_path=plate_obj.csv_path,
+        do_refseg=settings.measure_settings.do_refseg)
     if interaction is not None:
         interaction.check_cancelled()
     logger.info("Rescue analysis: opening CellTinder")
@@ -172,7 +173,8 @@ def _from_scan(
         
         extract_measure_intensities(plate_obj.positive_fovs,
                                 true_cell_threshold=settings.stim_settings.true_cell_threshold,
-                                csv_path=plate_obj.csv_path)
+                                csv_path=plate_obj.csv_path,
+                                do_refseg=settings.measure_settings.do_refseg)
 
     if interaction is None:
         run_celltinder(plate_obj.csv_path, crop_size=settings.stim_settings.crop_size)

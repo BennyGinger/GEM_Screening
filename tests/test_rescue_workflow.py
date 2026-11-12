@@ -2,13 +2,18 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
 from gem_screening.workflows.rescue.flow import run_rescue_flow
 from gem_screening.workflows.rescue.assessment import assess_rescue
 
 
-def _settings(*, dev_mode: bool = False):
+def _settings(*, dev_mode: bool = False, do_refseg: bool = True) -> SimpleNamespace:
+    """
+    Supply workflow settings including the selected channel mode.
+    """
     return SimpleNamespace(
         dev_mode=dev_mode,
+        measure_settings=SimpleNamespace(do_refseg=do_refseg),
         stim_settings=SimpleNamespace(true_cell_threshold=42, crop_size=251),
         server_settings=SimpleNamespace(
             track_stitch_threshold=0.8,
@@ -33,11 +38,16 @@ def _plate(tmp_path: Path):
 @patch("gem_screening.workflows.rescue.flow.extract_measure_intensities")
 @patch("gem_screening.workflows.rescue.flow.ComposeManager")
 @patch("gem_screening.workflows.rescue.flow.assess_rescue")
-def test_analysis_only_rescue_does_not_start_docker(
-    assess_rescue, compose_manager, extract, celltinder, illuminate, tmp_path
-):
+@pytest.mark.parametrize("do_refseg", [False, True])
+def test_analysis_only_rescue_does_not_start_docker(assess_rescue: MagicMock, compose_manager: MagicMock,
+                                                  extract: MagicMock, celltinder: MagicMock,
+                                                  illuminate: MagicMock, tmp_path: Path, do_refseg: bool,
+                                                  ) -> None:
+    """
+    Pass the channel mode to recovery analysis without starting Docker.
+    """
     plate = _plate(tmp_path)
-    settings = _settings()
+    settings = _settings(do_refseg=do_refseg)
     manager = MagicMock()
     assess_rescue.return_value = {
         "case": "celltinder", "masks_to_register": [],
@@ -48,7 +58,7 @@ def test_analysis_only_rescue_does_not_start_docker(
 
     compose_manager.assert_not_called()
     extract.assert_called_once_with(
-        plate.positive_fovs, true_cell_threshold=42, csv_path=plate.csv_path)
+        plate.positive_fovs, true_cell_threshold=42, csv_path=plate.csv_path, do_refseg=do_refseg)
     celltinder.assert_called_once_with(plate.csv_path, crop_size=251)
     illuminate.assert_called_once_with(manager, settings, plate, interaction=None)
 

@@ -32,7 +32,7 @@ def test_experiment_and_logging_live_in_header_without_moving_console():
     assert window.experiment_scroll.widget() is panel
     assert not editor.isAncestorOf(panel)
     assert [name for name, _ in editor.all_pages] == [
-        "Microscope", "Injection", "Server", "Light-Stimulation"
+        "Microscope", "Injection", "Segmentation", "Light-Stimulation"
     ]
     assert editor.advanced_checkbox.isHidden()
     assert editor.nav_tabs.count() == 4
@@ -289,9 +289,20 @@ def test_new_run_warns_before_reusing_nonempty_folder(tmp_path, monkeypatch):
 
 
 def test_full_runner_passes_existing_folder_to_workflow(tmp_path, monkeypatch):
+    from contextlib import contextmanager
+    from gem_screening.gui import main_window
     from gem_screening.workflows import complete
 
     captured = []
+    lifecycle = []
+
+    @contextmanager
+    def backend(lamp_name, *, log_dir, autofocus_method):
+        lifecycle.append((lamp_name, log_dir, autofocus_method))
+        yield
+        lifecycle.append("stopped")
+
+    monkeypatch.setattr(main_window, "headless_microscope", backend)
     monkeypatch.setattr(
         complete,
         "complete_pipeline",
@@ -308,3 +319,4 @@ def test_full_runner_passes_existing_folder_to_workflow(tmp_path, monkeypatch):
     )
 
     assert captured == [(old_run_dir, interaction)]
+    assert lifecycle == [("pE-800", old_run_dir / "logs", "Manual"), "stopped"]

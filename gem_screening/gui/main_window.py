@@ -51,6 +51,7 @@ from gem_screening.runtime import (
 )
 from gem_screening.runtime.interaction import InteractionRequest
 from gem_screening.runtime.logging import QtLogHandler
+from gem_screening.runtime.micromanager import headless_microscope
 from gem_screening.runtime.prompt_gui import PipelineQuit, PromptWindow
 
 
@@ -74,8 +75,14 @@ def _run_complete_pipeline(
     cancellation.raise_if_requested()
     from gem_screening.workflows.complete import complete_pipeline
 
-    complete_pipeline(settings, run_dir=run_dir, interaction=interaction)
-    cancellation.raise_if_requested()
+    with headless_microscope(
+        settings.acquisition_settings.lamp_name,
+        log_dir=run_dir / "logs",
+        autofocus_method=settings.dish_settings.af_method,
+    ):
+        cancellation.raise_if_requested()
+        complete_pipeline(settings, run_dir=run_dir, interaction=interaction)
+        cancellation.raise_if_requested()
 
 
 def _run_rescue_pipeline(
@@ -89,8 +96,14 @@ def _run_rescue_pipeline(
     cancellation.raise_if_requested()
     from gem_screening.workflows.rescue import rescue_pipeline
 
-    rescue_pipeline(run_dir, settings=settings, interaction=interaction)
-    cancellation.raise_if_requested()
+    with headless_microscope(
+        settings.acquisition_settings.lamp_name,
+        log_dir=run_dir / "logs",
+        autofocus_method=settings.dish_settings.af_method,
+    ):
+        cancellation.raise_if_requested()
+        rescue_pipeline(run_dir, settings=settings, interaction=interaction)
+        cancellation.raise_if_requested()
 
 
 class MainGui(QMainWindow):
@@ -388,7 +401,7 @@ class MainGui(QMainWindow):
         pages = [
             ("Microscope", AcquisitionPage(settings)),
             ("Injection", InjectionPage(settings)),
-            ("Server", ServerPage(settings)),
+            ("Segmentation", ServerPage(settings)),
             ("Light-Stimulation", StimPage(settings)),
         ]
         old_panel = self.experiment_scroll.takeWidget()
@@ -737,13 +750,17 @@ class MainGui(QMainWindow):
         self._update_run_buttons()
 
     def _handle_autofocus_request(self, request: InteractionRequest) -> None:
+        """
+        Open live focus adjustment on the GUI thread while the worker waits.
+        """
         try:
             if self.cancellation is not None:
                 self.cancellation.raise_if_requested()
-            from a1_manager.autofocus.autofocus_gui import AutofocusWidget
+            from a1_manager.autofocus.live_focus import LiveFocusWidget
 
-            widget = AutofocusWidget(request.payload["image"])
+            widget = LiveFocusWidget(request.payload["a1_manager"])
             if self.cancellation is not None and self.cancellation.is_requested():
+                widget.close()
                 widget.deleteLater()
                 raise PipelineCancelled()
             widget.result_signal.connect(
@@ -796,7 +813,7 @@ class MainGui(QMainWindow):
             if self.pipeline_settings is not None and self.settings_window is not None:
                 self.pipeline_settings.server_settings = tuned_settings.model_copy(deep=True)
                 for title, page in self.settings_window.all_pages:
-                    if title == "Server":
+                    if title == "Segmentation":
                         page.load_settings()
                         break
             request.resolve(tuned_settings)
@@ -882,6 +899,20 @@ class MainGui(QMainWindow):
         self.close_current_task()
 
     def close_current_task(self) -> None:
+        """
+        Clean up the interactive task before releasing its waiting worker.
+        """
+        if self.task_widget is not None:
+            from a1_manager.autofocus.live_focus import LiveFocusWidget
+
+            if isinstance(self.task_widget, LiveFocusWidget):
+                try:
+                    self.task_widget.stop_live_view()
+                except Exception as error:
+                    self.append_terminal(f"[Autofocus] Cleanup failed: {error}")
+                    if self._active_request is not None:
+                        self._active_request.reject(error)
+                        self._active_request = None
         if self._active_request is not None:
             request = self._active_request
             self._active_request = None

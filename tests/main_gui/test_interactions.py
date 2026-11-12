@@ -1,5 +1,9 @@
 import time
 from pathlib import Path
+from typing import Any
+from unittest.mock import MagicMock
+
+import pytest
 
 import numpy as np
 from PyQt6.QtCore import QThread, pyqtSignal
@@ -222,51 +226,84 @@ def test_cancel_button_releases_worker_waiting_at_prompt(tmp_path):
     window.close()
 
 
-def test_autofocus_review_runs_in_main_thread_and_returns_choice(tmp_path, monkeypatch):
-    import a1_manager.autofocus.autofocus_gui as autofocus_module
+def test_autofocus_review_runs_in_main_thread_and_returns_choice(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Create live review on the GUI thread and return Continue to the worker.
+    """
+    import a1_manager.autofocus.live_focus as autofocus_module
 
-    events = []
+    events: list[tuple[str, Any]] = []
+    manager = MagicMock()
 
     class FakeAutofocus(QWidget):
         result_signal = pyqtSignal(str)
 
-        def __init__(self, image):
+        def stop_live_view(self) -> None:
+            """
+            Provide the cleanup hook without connecting to hardware.
+            """
+            pass
+
+        def __init__(self, a1_manager: Any) -> None:
+            """
+            Record the manager delivered to the main thread.
+            """
             super().__init__()
             assert QThread.currentThread() is APP.thread()
-            events.append(("image", image.shape))
+            events.append(("manager", a1_manager))
 
-    monkeypatch.setattr(autofocus_module, "AutofocusWidget", FakeAutofocus)
+    monkeypatch.setattr(autofocus_module, "LiveFocusWidget", FakeAutofocus)
 
-    def runner(_settings, interaction, _cancel):
-        events.append(("choice", interaction.run_autofocus_check(np.zeros((8, 8)))))
+    def runner(_settings: Any, interaction: Any, _cancel: Any) -> None:
+        """
+        Request focus adjustment from the worker thread.
+        """
+        events.append(("choice", interaction.run_autofocus_check(manager)))
 
     window = MainGui(runner_factory=lambda _path, _rescue: runner)
     start_mock_run(window, tmp_path)
     wait_until(lambda: window.workspace_tabs.count() == 2)
     assert window.workspace_tabs.tabText(1) == "Autofocus review"
-    assert not window.settings_window.project_settings_panel.savedir_edit.isEnabled()
+    assert window.settings_window is not None
+    project_panel = window.settings_window.project_settings_panel
+    assert project_panel is not None
+    assert project_panel.savedir_edit is not None
+    assert not project_panel.savedir_edit.isEnabled()
 
-    window.task_widget.result_signal.emit("restart")
+    assert isinstance(window.task_widget, FakeAutofocus)
+    window.task_widget.result_signal.emit("continue")
     wait_until(lambda: not window.run_started)
-    assert events == [("image", (8, 8)), ("choice", "restart")]
+    assert events == [("manager", manager), ("choice", "continue")]
     assert window._pipeline_outcome == "completed"
     window.close()
 
 
-def test_closing_autofocus_review_cancels_worker(tmp_path, monkeypatch):
-    import a1_manager.autofocus.autofocus_gui as autofocus_module
+def test_closing_autofocus_review_cancels_worker(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Closing the live review releases the worker after camera cleanup.
+    """
+    import a1_manager.autofocus.live_focus as autofocus_module
 
     class FakeAutofocus(QWidget):
         result_signal = pyqtSignal(str)
 
-        def __init__(self, _image):
+        def stop_live_view(self) -> None:
+            """
+            Provide the cleanup hook without connecting to hardware.
+            """
+            pass
+
+        def __init__(self, _manager: Any) -> None:
+            """
+            Create a review without starting hardware.
+            """
             super().__init__()
 
-    monkeypatch.setattr(autofocus_module, "AutofocusWidget", FakeAutofocus)
+    monkeypatch.setattr(autofocus_module, "LiveFocusWidget", FakeAutofocus)
     window = MainGui(
         runner_factory=lambda _path, _rescue: (
             lambda _settings, interaction, _cancel: interaction.run_autofocus_check(
-                np.zeros((8, 8))
+                MagicMock()
             )
         )
     )

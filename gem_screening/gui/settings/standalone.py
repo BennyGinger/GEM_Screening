@@ -36,7 +36,7 @@ def main(settings_path: str | Path | None = None) -> int:
         ("Logging", LoggingPage(pipeline_settings)),
         ("Microscope", AcquisitionPage(pipeline_settings)),
         ("Injection", InjectionPage(pipeline_settings)),
-        ("Server", ServerPage(pipeline_settings)),
+        ("Segmentation", ServerPage(pipeline_settings)),
         ("Light-Stimulation", StimPage(pipeline_settings)),
     ]
     window = MainWindow(pages, pipeline_settings, output_path)

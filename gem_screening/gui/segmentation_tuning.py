@@ -14,6 +14,7 @@ from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QPixmap, QImage, QDoubleValidator, QIntValidator, QKeyEvent, QFocusEvent
 
 from a1_manager import A1Manager, StageCoord
+from a1_manager.utils.image_display import apply_display_lut
 from gem_screening.client.service import cellpose_metadata_client, optimise_segmentation
 from gem_screening.settings.models import ServerSettings, PipelineSettings
 from gem_screening.tasks.segmentation_tuning import ImageCollector
@@ -830,28 +831,16 @@ class TuneSegWidget(QWidget):
             q_image = QImage(img_array.data, width, height, bytes_per_line, QImage.Format.Format_RGB888)
         return QPixmap.fromImage(q_image)
         
-    def _update_image_display(self):
+    def _update_image_display(self) -> None:
+        """
+        Render the image using the shared display LUT and optional mask overlay.
+        """
         if hasattr(self, 'image_label'):
             if self.image is not None:
-                # Apply display adjustments (min/max, brightness, contrast) to original image
-                img = self.image.astype(np.float32)
-                
-                # Apply min/max scaling
-                vmin = self.display_min
-                vmax = self.display_max
-                if vmax > vmin:
-                    img = np.clip((img - vmin) / (vmax - vmin), 0, 1)
-                else:
-                    img = np.clip(img / 65535, 0, 1)
-                
-                # Apply brightness (shift)
-                brightness_factor = (self.brightness - 50) / 50  # -1 to 1
-                img = np.clip(img + brightness_factor * 0.3, 0, 1)
-                
-                # Apply contrast (scale around 0.5)
-                contrast_factor = self.contrast / 50  # 0 to 2
-                img = np.clip((img - 0.5) * contrast_factor + 0.5, 0, 1)
-                
+                img = apply_display_lut(self.image, self.display_min, self.display_max,
+                                        self.brightness, self.contrast,
+                                        )
+
                 # Keep in 16-bit for better quality
                 img_display = (img * 65535).astype(np.uint16)
                 

@@ -9,7 +9,6 @@ from a1_manager import A1Manager, StageCoord
 from a1_manager.autofocus.af_utils import QuitAutofocus
 
 from gem_screening.runtime.prompt_gui import PipelineQuit
-from gem_screening.runtime.prompts import FOCUS_PROMPT, prompt_to_continue
 from gem_screening.infrastructure.constants import CONFIG_FOLDER
 from gem_screening.settings.models import PipelineSettings
 from gem_screening.workflows.initialization import initialize_pipeline
@@ -34,15 +33,6 @@ def complete_pipeline(
     a1_manager, run_dir, logger, run_id = initialize_pipeline(settings, run_dir=run_dir)
     if interaction is not None:
         interaction.check_cancelled()
-
-    if settings.dish_settings.dish_name.lower() not in ["35mm", "96well", "384well"]:
-        try:
-            prompt_to_continue(FOCUS_PROMPT, interaction)
-        except PipelineQuit:
-            logger.info("User chose to quit. Stopping pipeline.")
-            if interaction is not None:
-                raise
-            return
 
     try:
         dish_kwargs = settings.dish_settings.model_dump(exclude={"well_grouping"})
@@ -184,7 +174,8 @@ def run_complete_flow(
             logger.info("Extracting cell measurements for %s FOVs", len(sublist_fovs))
             extract_measure_intensities(sublist_fovs,
                                 true_cell_threshold=settings.stim_settings.true_cell_threshold,
-                                csv_path=plate.csv_path)
+                                csv_path=plate.csv_path,
+                                do_refseg=settings.measure_settings.do_refseg)
             if interaction is not None:
                 interaction.check_cancelled()
 

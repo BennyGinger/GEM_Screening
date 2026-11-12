@@ -14,13 +14,16 @@ from gem_screening.experiment import FieldOfView
 logger = logging.getLogger(__name__)
 
 
-def extract_measure_intensities(fovs_list: list[FieldOfView], true_cell_threshold: int, csv_path: Path, *, executor: str = 'thread', max_workers: int | None = None) -> None:
+def extract_measure_intensities(fovs_list: list[FieldOfView], true_cell_threshold: int, csv_path: Path, *,
+                                do_refseg: bool = True, executor: str = 'thread', max_workers: int | None = None,
+                                ) -> None:
     """
     Extract the region properties for all FOVs in parallel, convert it to a pandas `DataFrame` and save it to a CSV file.
     Args:
         fovs_list (list[FieldOfView]): List of all positive FOVs to process across all wells.
         true_cell_threshold (int): Threshold for true cell detection. Below this intensity value, cells are considered noise and set to 0 in the output.
         csv_path (Path): Path to save the resulting CSV file.
+        do_refseg (bool): Require and measure the reference channel when enabled.
         executor (str, optional): Type of executor to use for parallel processing ('thread' or 'process'). Defaults to 'thread'.
         max_workers (int | None): Maximum number of workers to use for parallel processing. Defaults to None, which lets the executor decide based on available resources.
     """
@@ -60,14 +63,14 @@ def extract_measure_intensities(fovs_list: list[FieldOfView], true_cell_threshol
         ref_images = fov.tiff_paths.get(REFSEG_LABEL, [])
         mask_images = fov.tiff_paths.get(MASK_LABEL, [])
         
-        if len(measure_images) >= 2 and len(ref_images) >= 2 and len(mask_images) >= 1:
+        if len(measure_images) >= 2 and (not do_refseg or len(ref_images) >= 2) and len(mask_images) >= 1:
             valid_fovs.append(fov)
         else:
             skipped_fovs.append(fov)
             logger.debug(
                 f"Skipping FOV {fov.fov_id}: has {len(measure_images)} measure images, "
                 f"{len(ref_images)} refseg images and {len(mask_images)} masks "
-                f"(need 2+ measure, 2+ refseg, 1+ mask)")
+                f"(need 2+ measure, {'2+ refseg, ' if do_refseg else ''}1+ mask)")
     
     if skipped_fovs:
         logger.warning(f"Skipping {len(skipped_fovs)} FOVs that don't have required images. Processing {len(valid_fovs)} valid FOVs.")
@@ -79,7 +82,7 @@ def extract_measure_intensities(fovs_list: list[FieldOfView], true_cell_threshol
     fovs_to_process = valid_fovs
 
     # Bind the threshold into a worker
-    worker = lambda fov: _create_regionprops(fov, true_cell_threshold)
+    worker = lambda fov: _create_regionprops(fov, true_cell_threshold, do_refseg=do_refseg)
     
     # Run the worker in parallel over all FOVs
     region_dfs = parallel_progress_bar(
@@ -137,22 +140,18 @@ def update_control_intensities(fovs: list[FieldOfView], csv_path: Path, *, execu
     df.to_csv(csv_path, index=False)
     logger.info(f"Updated region properties with control images for {len(fovs)} FOVs and saved to {csv_path}.")
 
-def _create_regionprops(fov: FieldOfView, true_cell_threshold: int) -> pd.DataFrame:
+def _create_regionprops(fov: FieldOfView, true_cell_threshold: int, *, do_refseg: bool = True) -> pd.DataFrame:
     """
     Wrapper function to extract region properties for a single FieldOfView.
     Args:
         fov (FieldOfView): The FieldOfView object to process.
         true_cell_threshold (int): Threshold for true cell detection. Below this intensity value, cells are considered noise and set to 0 in the output.
+        do_refseg (bool): Include reference-channel measurements when enabled.
     Returns:
         pd.DataFrame: DataFrame containing the extracted region properties for the FOV.
     """
     # Extract region properties for the measure and refseg images
     props0, propsn = _regionprops_wrapper(fov, False)
-    ref_props0, ref_propsn = _regionprops_wrapper(
-        fov,
-        False,
-        img_cat=REFSEG_LABEL,
-        include_centroid=False)
     
     # Convert the properties to DataFrames
     df0 = pd.DataFrame(props0).rename(columns={'mean_intensity': BEFORE_STIM,
@@ -162,16 +161,24 @@ def _create_regionprops(fov: FieldOfView, true_cell_threshold: int) -> pd.DataFr
                                                'centroid-1': CENTROID_X,
                                                'label': CELL_LABEL})
     df = pd.merge(df0, dfn, on=CELL_LABEL, how='inner')
-    df_ref0 = pd.DataFrame(ref_props0).rename(columns={'mean_intensity': BEFORE_REF,
-                                                       'label': CELL_LABEL})
-    df_refn = pd.DataFrame(ref_propsn).rename(columns={'mean_intensity': AFTER_REF,
-                                                       'label': CELL_LABEL})
-    df = pd.merge(df, df_ref0, on=CELL_LABEL, how='left')
-    df = pd.merge(df, df_refn, on=CELL_LABEL, how='left')
+    if do_refseg:
+        ref_props0, ref_propsn = _regionprops_wrapper(fov, False,
+                                                   img_cat=REFSEG_LABEL,
+                                                   include_centroid=False,
+                                                   )
+        df_ref0 = pd.DataFrame(ref_props0).rename(columns={'mean_intensity': BEFORE_REF,
+                                                         'label': CELL_LABEL})
+        df_refn = pd.DataFrame(ref_propsn).rename(columns={'mean_intensity': AFTER_REF,
+                                                         'label': CELL_LABEL})
+        df = pd.merge(df, df_ref0, on=CELL_LABEL, how='left')
+        df = pd.merge(df, df_refn, on=CELL_LABEL, how='left')
+    else:
+        df[BEFORE_REF] = np.nan
+        df[AFTER_REF] = np.nan
     
     # Save semantic labels so downstream tools can resolve concrete files themselves.
     df["img_label"] = MEASURE_LABEL
-    df["ref_label"] = REFSEG_LABEL
+    df["ref_label"] = REFSEG_LABEL if do_refseg else ""
     df["mask_label"] = MASK_LABEL
     
     # Apply the true cell threshold to the mean intensity, else set to 0
@@ -206,7 +213,7 @@ def _create_regionprops(fov: FieldOfView, true_cell_threshold: int) -> pd.DataFr
     if dropped:
         logger.debug(
             f"FOV {fov.fov_id}: Discarding {dropped} cells (invalid ratio or below threshold).")
-        df = df[~to_drop_mask].reset_index(drop=True)
+        df = df.loc[~to_drop_mask].reset_index(drop=True)
     return df
 
 def _update_regionprops(fov: FieldOfView, df_ori: pd.DataFrame) -> pd.DataFrame:
