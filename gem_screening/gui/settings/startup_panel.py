@@ -45,7 +45,7 @@ class ExperimentStartupDialog(QDialog):
         layout.addLayout(path_layout)
 
         self.error_label = QLabel()
-        self.error_label.setStyleSheet("color: #b00020;")
+        self.error_label.setStyleSheet("color: #ff9aa8;")
         self.error_label.setWordWrap(True)
         layout.addWidget(self.error_label)
 

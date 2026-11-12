@@ -7,7 +7,8 @@ from collections.abc import Callable
 from functools import partial
 from pathlib import Path
 
-from PyQt6.QtCore import QThread, Qt
+from PyQt6.QtCore import QThread
+from PyQt6.QtGui import QDragEnterEvent, QDropEvent
 from PyQt6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -19,7 +20,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
-    QSplitter,
+    QScrollArea,
     QStackedWidget,
     QTabWidget,
     QVBoxLayout,
@@ -30,10 +31,13 @@ from PyQt6.QtWidgets import (
 from celltinder.cell_tinder import CellTinderWidget
 
 from gem_screening.infrastructure.filesystem import timestamped_dir_path
+from gem_screening.infrastructure.constants import CONFIG_FOLDER
 from gem_screening.gui.settings.editor import MainWindow as SettingsWindow
 from gem_screening.gui.settings.pages.acquisition_page import AcquisitionPage
 from gem_screening.gui.settings.pages.injection_page import InjectionPage
-from gem_screening.gui.settings.pages.logging_page import LoggingPage
+from gem_screening.gui.settings.project_panel import ProjectSettingsPanel
+from gem_screening.gui.wheel_focus import install_parameter_wheel_filter
+from gem_screening.gui.theme import apply_theme
 from gem_screening.gui.settings.pages.server_page import ServerPage
 from gem_screening.gui.settings.pages.stim_page import StimPage
 from gem_screening.settings.models import PipelineSettings
@@ -98,8 +102,12 @@ class MainGui(QMainWindow):
         runner_factory: Callable[[Path, bool], PipelineRunner] | None = None,
     ):
         super().__init__()
+        apply_theme()
+        install_parameter_wheel_filter()
         self.setWindowTitle("GEM Screening")
+        self.setAcceptDrops(True)
         self.resize(1400, 900)
+        self._initial_screen_size_applied = False
 
         self.pipeline_settings: PipelineSettings | None = None
         self.settings_path: Path | None = None
@@ -116,6 +124,7 @@ class MainGui(QMainWindow):
         self._active_request: InteractionRequest | None = None
         self._prompt_request: InteractionRequest | None = None
         self._prompt_window: PromptWindow | None = None
+        self._console_request: InteractionRequest | None = None
 
         root = QWidget()
         root_layout = QVBoxLayout(root)
@@ -126,17 +135,30 @@ class MainGui(QMainWindow):
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Maximum,
         )
-        self.header_stack.setMaximumHeight(150)
         self.header_stack.addWidget(self._build_experiment_selector())
         self.header_stack.addWidget(self._build_experiment_identity())
+        sizing_panel = ProjectSettingsPanel(PipelineSettings(), include_logging=True)
+        sizing_panel.advanced_button.setChecked(True)
+        self.header_stack.setFixedHeight(max(
+            sizing_panel.sizeHint().height(), self.header_stack.widget(0).sizeHint().height()
+        ))
+        sizing_panel.deleteLater()
         root_layout.addWidget(self.header_stack)
 
+        self.workspace_stack = QStackedWidget()
+        empty_workspace = QFrame()
+        empty_workspace.setStyleSheet("background-color: #3d4755;")
+        self.workspace_stack.addWidget(empty_workspace)
         self.workspace_tabs = QTabWidget()
+        self.workspace_tabs.tabBar().setObjectName("workspaceTabs")
         self.workspace_tabs.setDocumentMode(True)
-        self.workspace_tabs.setVisible(False)
-        root_layout.addWidget(self.workspace_tabs, 1)
+        self.workspace_stack.addWidget(self.workspace_tabs)
+        root_layout.addWidget(self.workspace_stack, 1)
 
-        bottom_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.bottom_panel = QWidget()
+        self.bottom_panel.setFixedHeight(260)
+        bottom_layout = QHBoxLayout(self.bottom_panel)
+        bottom_layout.setContentsMargins(0, 0, 0, 0)
         self.terminal_widget = QPlainTextEdit()
         self.terminal_widget.setReadOnly(True)
         self.terminal_widget.setMaximumBlockCount(20000)
@@ -144,12 +166,26 @@ class MainGui(QMainWindow):
         self.terminal_widget.setStyleSheet(
             "background-color: #23272e; color: #f8f8f2;"
         )
-        bottom_splitter.addWidget(self.terminal_widget)
-        bottom_splitter.addWidget(self._build_action_panel())
-        bottom_splitter.setStretchFactor(0, 1)
-        bottom_splitter.setSizes([1100, 220])
-        bottom_splitter.setMinimumHeight(260)
-        root_layout.addWidget(bottom_splitter)
+        console_panel = QWidget()
+        console_layout = QVBoxLayout(console_panel)
+        console_layout.setContentsMargins(0, 0, 0, 0)
+        console_layout.addWidget(self.terminal_widget)
+        input_row = QHBoxLayout()
+        self.console_input = QLineEdit()
+        self.console_input.setPlaceholderText("Response (press Enter to continue)")
+        self.console_input.setEnabled(False)
+        self.console_input.returnPressed.connect(self._submit_console_input)
+        input_row.addWidget(self.console_input)
+        self.console_submit = QPushButton("Send / Continue")
+        self.console_submit.setEnabled(False)
+        self.console_submit.clicked.connect(self._submit_console_input)
+        input_row.addWidget(self.console_submit)
+        console_layout.addLayout(input_row)
+        bottom_layout.addWidget(console_panel, 1)
+        action_panel = self._build_action_panel()
+        action_panel.setFixedWidth(max(220, action_panel.sizeHint().width()))
+        bottom_layout.addWidget(action_panel)
+        root_layout.addWidget(self.bottom_panel)
 
         self.terminal_handler = QtLogHandler(self)
         self.terminal_handler.setLevel(LOG_LEVEL)
@@ -161,11 +197,63 @@ class MainGui(QMainWindow):
 
         if pipeline_settings is not None:
             self._load_experiment(pipeline_settings, None)
+        self._route_folder_drops()
+
+    def _route_folder_drops(self) -> None:
+        # Let the window handle folder URLs instead of inserting them into editors.
+        for editor_type in (QLineEdit, QPlainTextEdit):
+            for editor in self.findChildren(editor_type):
+                editor.setAcceptDrops(False)
+
+    def _dropped_folder(self, event) -> Path | None:
+        if self.run_started or self.task_widget is not None:
+            return None
+        urls = event.mimeData().urls()
+        if len(urls) != 1 or not urls[0].isLocalFile():
+            return None
+        folder = Path(urls[0].toLocalFile())
+        return folder if folder.is_dir() else None
+
+    def dragEnterEvent(self, event: QDragEnterEvent) -> None:
+        if self._dropped_folder(event) is not None:
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event: QDropEvent) -> None:
+        folder = self._dropped_folder(event)
+        if folder is None:
+            event.ignore()
+            return
+        try:
+            marker = None
+            for candidate in (folder, *folder.parents):
+                settings_file = candidate / CONFIG_FOLDER / "pipeline_settings.json"
+                if settings_file.is_file():
+                    marker = settings_file
+                    break
+            if marker is not None:
+                settings, settings_path = load_gui_settings(marker)
+            else:
+                settings, settings_path = load_gui_settings()
+                settings.savedir = str(folder)
+            self._load_experiment(settings, settings_path)
+            selected_folder = settings_path.parent.parent if settings_path else folder
+            self.experiment_path_edit.setText(str(selected_folder))
+            self.append_terminal(
+                f"[GUI] {'Loaded experiment' if settings_path else 'New experiment in user folder'}: {selected_folder}"
+            )
+            event.acceptProposedAction()
+        except (OSError, TypeError, ValueError) as error:
+            self.append_terminal(f"[GUI] Cannot open dropped folder: {error}")
+            QMessageBox.warning(self, "Cannot open folder", str(error))
+            event.ignore()
 
     def _build_experiment_selector(self) -> QWidget:
         panel = QFrame()
+        panel.setObjectName("experimentSelector")
         layout = QVBoxLayout(panel)
-        layout.addWidget(QLabel("Start a new experiment or open an existing experiment."))
+        layout.addWidget(QLabel("Start a new experiment, open an existing experiment, or drop a folder here."))
 
         new_button = QPushButton("New Experiment")
         new_button.clicked.connect(self._new_experiment)
@@ -185,25 +273,24 @@ class MainGui(QMainWindow):
         layout.addLayout(existing_row)
 
         self.experiment_error = QLabel()
-        self.experiment_error.setStyleSheet("color: #b00020;")
+        self.experiment_error.setStyleSheet("color: #ff9aa8;")
         self.experiment_error.setWordWrap(True)
         layout.addWidget(self.experiment_error)
         return panel
 
     def _build_experiment_identity(self) -> QWidget:
         panel = QFrame()
-        layout = QVBoxLayout(panel)
-        self.user_folder_label = QLabel()
-        self.experiment_name_label = QLabel()
-        layout.addWidget(self.user_folder_label)
-        layout.addWidget(self.experiment_name_label)
-        change_button = QPushButton("Change Experiment")
-        change_button.clicked.connect(self._show_experiment_selector)
-        layout.addWidget(change_button)
+        layout = QHBoxLayout(panel)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.experiment_scroll = QScrollArea()
+        self.experiment_scroll.setWidgetResizable(True)
+        self.experiment_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        layout.addWidget(self.experiment_scroll, 1)
         return panel
 
     def _build_action_panel(self) -> QWidget:
         panel = QFrame()
+        panel.setObjectName("pipelineControls")
         panel.setMinimumWidth(200)
         layout = QVBoxLayout(panel)
         layout.addWidget(QLabel("Controls"))
@@ -299,20 +386,31 @@ class MainGui(QMainWindow):
         self.workspace_tabs.clear()
 
         pages = [
-            ("Logging", LoggingPage(settings)),
             ("Microscope", AcquisitionPage(settings)),
             ("Injection", InjectionPage(settings)),
             ("Server", ServerPage(settings)),
             ("Light-Stimulation", StimPage(settings)),
         ]
+        old_panel = self.experiment_scroll.takeWidget()
+        if old_panel is not None:
+            old_panel.deleteLater()
+        project_panel = ProjectSettingsPanel(settings, include_logging=True)
+        project_panel.browse_button.setVisible(settings_path is None)
+        project_panel.change_button = QPushButton("Change Experiment")
+        project_panel.change_button.clicked.connect(self._show_experiment_selector)
+        project_panel.savedir_row.addWidget(project_panel.change_button)
+        project_panel.settings_path = settings_path
+        project_panel._update_run_directory_preview()
+        self.experiment_scroll.setWidget(project_panel)
         self.settings_window = SettingsWindow(
             pages,
             settings,
             settings_path,
             show_proceed_button=False,
+            project_settings_panel=project_panel,
         )
         self.workspace_tabs.addTab(self.settings_window, "Settings")
-        self.workspace_tabs.setVisible(True)
+        self.workspace_stack.setCurrentWidget(self.workspace_tabs)
         self.header_stack.setCurrentIndex(1)
         self._update_run_buttons()
         self.celltinder_button.setEnabled(True)
@@ -325,6 +423,7 @@ class MainGui(QMainWindow):
             project_panel.savedir_edit.textChanged.connect(self._update_identity)
             project_panel.experiment_name_edit.textChanged.connect(self._update_identity)
         self._update_identity()
+        self._route_folder_drops()
         self.append_terminal("[GUI] Experiment settings loaded.")
 
     def prepare_pipeline_start(self) -> None:
@@ -389,6 +488,9 @@ class MainGui(QMainWindow):
             return
 
         self.settings_path = settings_path
+        self.settings_window.project_settings_panel.settings_path = settings_path
+        self.settings_window.project_settings_panel.browse_button.hide()
+        self.settings_window.project_settings_panel._update_run_directory_preview()
         self.is_existing_experiment = True
         run_dir = settings_path.parent.parent
         self.append_terminal(f"[Settings] Saved and validated: {settings_path}")
@@ -465,6 +567,7 @@ class MainGui(QMainWindow):
         settings_snapshot = settings.model_copy(deep=True)
         self.cancellation = CancellationToken()
         self.pipeline_interaction = PipelineInteraction(self.cancellation)
+        self.pipeline_interaction.console_input_requested.connect(self._handle_console_input)
         self.pipeline_interaction.confirmation_requested.connect(
             self._handle_confirmation_request
         )
@@ -525,6 +628,7 @@ class MainGui(QMainWindow):
 
     def _pipeline_thread_finished(self) -> None:
         """Restore editable state only after worker execution has stopped."""
+        self._clear_console_input()
         self.close_current_task()
         if self._prompt_window is not None:
             self._prompt_window.close()
@@ -546,6 +650,9 @@ class MainGui(QMainWindow):
         if self.cancellation is None:
             return
         self.cancellation.request()
+        if self._console_request is not None:
+            self._console_request.reject(PipelineCancelled())
+            self._clear_console_input()
         if self._active_request is not None:
             self.close_current_task()
         if self._prompt_request is not None:
@@ -557,6 +664,36 @@ class MainGui(QMainWindow):
         self.append_terminal(
             "[Pipeline] Cancellation requested; waiting for a safe checkpoint."
         )
+
+    def _clear_console_input(self) -> None:
+        self._console_request = None
+        self.console_input.clear()
+        self.console_input.setEnabled(False)
+        self.console_submit.setEnabled(False)
+
+    def _handle_console_input(self, request: InteractionRequest) -> None:
+        try:
+            if self.cancellation is not None:
+                self.cancellation.raise_if_requested()
+            if self._console_request is not None:
+                raise RuntimeError("A console prompt is already waiting.")
+            self._console_request = request
+            self.append_terminal(f"[Calibration] {request.payload['message']}")
+            self.console_input.clear()
+            self.console_input.setEnabled(True)
+            self.console_submit.setEnabled(True)
+            self.console_input.setFocus()
+        except Exception as error:
+            request.reject(error)
+
+    def _submit_console_input(self) -> None:
+        request = self._console_request
+        if request is None:
+            return
+        response = self.console_input.text()
+        self.append_terminal(f"> {response}")
+        self._clear_console_input()
+        request.resolve(response)
 
     def _handle_confirmation_request(self, request: InteractionRequest) -> None:
         """Display a standalone prompt owned by the GUI thread."""
@@ -685,10 +822,8 @@ class MainGui(QMainWindow):
     def _update_identity(self, *_args) -> None:
         if self.pipeline_settings is None:
             return
-        folder = self.pipeline_settings.savedir.strip() or "Not selected"
-        name = self.pipeline_settings.savedir_name.strip() or "Not named"
-        self.user_folder_label.setText(f"User folder: {folder}")
-        self.experiment_name_label.setText(f"Experiment: {name}")
+        if self.settings_window is not None:
+            self.settings_window.project_settings_panel._update_run_directory_preview()
 
     def _show_experiment_selector(self) -> None:
         if self.run_started:
@@ -773,6 +908,27 @@ class MainGui(QMainWindow):
             scrollbar.setValue(scrollbar.maximum())
         else:
             scrollbar.setValue(previous_position)
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        if self._initial_screen_size_applied:
+            return
+        self._initial_screen_size_applied = True
+        screen = self.screen()
+        if screen is None:
+            return
+        available = screen.availableGeometry()
+        frame = self.frameGeometry()
+        border_width = frame.width() - self.width()
+        border_height = frame.height() - self.height()
+        self.resize(
+            min(self.width(), available.width() - border_width),
+            available.height() - border_height,
+        )
+        self.move(
+            available.x() + (available.width() - self.frameGeometry().width()) // 2,
+            available.y(),
+        )
 
     def closeEvent(self, event) -> None:
         if self.pipeline_thread is not None and self.pipeline_thread.isRunning():

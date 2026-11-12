@@ -43,6 +43,7 @@ class PipelineInteraction(QObject):
     """Thread-safe requests from a pipeline worker to the Qt main thread."""
 
     confirmation_requested = pyqtSignal(object)
+    console_input_requested = pyqtSignal(object)
     autofocus_requested = pyqtSignal(object)
     segmentation_requested = pyqtSignal(object)
     celltinder_requested = pyqtSignal(object)
@@ -55,6 +56,12 @@ class PipelineInteraction(QObject):
         """Stop at a safe workflow boundary when cancellation was requested."""
         if self.cancellation is not None:
             self.cancellation.raise_if_requested()
+
+    def read_console_input(self, message: str) -> str:
+        self.check_cancelled()
+        request = InteractionRequest({"message": message})
+        self.console_input_requested.emit(request)
+        return str(request.wait(self.cancellation))
 
     def confirm(self, message: str) -> bool:
         request = InteractionRequest({"message": message})

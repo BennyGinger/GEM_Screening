@@ -29,6 +29,41 @@ def start_mock_run(window, tmp_path):
     window.start_button.click()
 
 
+def test_calibration_console_accepts_enter_and_choice(tmp_path):
+    responses = []
+
+    def runner(_settings, interaction, _cancel):
+        responses.append(interaction.read_console_input("Move to the dish edge and press Enter"))
+        responses.append(interaction.read_console_input("Use measured radius? (y/no)"))
+
+    window = MainGui(runner_factory=lambda _path, _rescue: runner)
+    start_mock_run(window, tmp_path)
+    wait_until(lambda: window.console_input.isEnabled())
+    assert "Move to the dish edge" in window.terminal_widget.toPlainText()
+    window.console_input.returnPressed.emit()
+    wait_until(lambda: "Use measured radius?" in window.terminal_widget.toPlainText())
+    window.console_input.setText("y")
+    window.console_submit.click()
+    wait_until(lambda: not window.run_started)
+    assert responses == ["", "y"]
+    assert not window.console_input.isEnabled()
+    assert window._pipeline_outcome == "completed"
+    window.close()
+
+
+def test_cancel_releases_calibration_console_prompt(tmp_path):
+    window = MainGui(runner_factory=lambda _path, _rescue: (
+        lambda _settings, interaction, _cancel: interaction.read_console_input("Move stage")
+    ))
+    start_mock_run(window, tmp_path)
+    wait_until(lambda: window.console_input.isEnabled())
+    window.cancel_button.click()
+    wait_until(lambda: not window.run_started)
+    assert window._pipeline_outcome == "cancelled"
+    assert not window.console_input.isEnabled()
+    window.close()
+
+
 def test_worker_uses_embedded_tasks_and_independent_prompt(tmp_path, monkeypatch):
     import gem_screening.gui.segmentation_tuning as tuner_module
     import gem_screening.gui.main_window as main_module

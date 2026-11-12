@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
     QLabel,
-    QListWidget,
+    QTabBar,
     QMainWindow,
     QMessageBox,
     QLineEdit,
@@ -22,20 +22,12 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from PyQt6.QtCore import QEvent, QObject, Qt
+from PyQt6.QtCore import Qt
 
 from gem_screening.gui.settings.project_panel import ProjectSettingsPanel
 from gem_screening.settings.storage import save_project_settings
+from gem_screening.gui.wheel_focus import FocusedNumericWheelFilter, install_parameter_wheel_filter
 
-
-class FocusedNumericWheelFilter(QObject):
-    """Prevent wheel changes until an editable control has been clicked/focused."""
-
-    def eventFilter(self, watched, event):
-        if event.type() == QEvent.Type.Wheel and not watched.hasFocus():
-            event.ignore()
-            return True
-        return super().eventFilter(watched, event)
 
 class MainWindow(QMainWindow):
     def __init__(
@@ -44,11 +36,13 @@ class MainWindow(QMainWindow):
         pipeline_settings=None,
         settings_path: Path | None = None,
         show_proceed_button: bool = True,
+        project_settings_panel: ProjectSettingsPanel | None = None,
     ):
         self.pipeline_settings = pipeline_settings
         self.settings_path = settings_path
         self._read_only_states: dict[QWidget, bool] = {}
         super().__init__()
+        install_parameter_wheel_filter()
         self.setWindowTitle("Settings GUI")
         self.resize(900, 600)
 
@@ -61,27 +55,28 @@ class MainWindow(QMainWindow):
         root_layout = QVBoxLayout(main_widget)
         self.setCentralWidget(main_widget)
 
-        self.project_settings_panel = None
-        if self.pipeline_settings is not None:
+        self.project_settings_panel = project_settings_panel
+        if self.pipeline_settings is not None and project_settings_panel is None:
             self.project_settings_panel = ProjectSettingsPanel(self.pipeline_settings)
             root_layout.addWidget(self.project_settings_panel)
 
-        page_layout = QHBoxLayout()
+        page_layout = QVBoxLayout()
         root_layout.addLayout(page_layout, 1)
-
-        # Sidebar layout (vertical)
-        sidebar = QVBoxLayout()
-        page_layout.addLayout(sidebar)
 
         # Advanced settings checkbox
         self.advanced_checkbox = QCheckBox("Advanced Settings")
         self.advanced_checkbox.stateChanged.connect(self.update_nav)
-        sidebar.addWidget(self.advanced_checkbox)
+        self.advanced_checkbox.setVisible(bool(self.advanced_pages))
+        page_layout.addWidget(self.advanced_checkbox)
 
         # Navigation list
-        self.nav_list = QListWidget()
-        self.nav_list.setFixedWidth(180)
-        sidebar.addWidget(self.nav_list)
+        self.nav_tabs = QTabBar()
+        self.nav_tabs.setObjectName("settingsTabs")
+        self.nav_tabs.setExpanding(False)
+        self.nav_tabs.setDrawBase(True)
+        for name, _ in pages:
+            self.nav_tabs.addTab(name)
+        page_layout.addWidget(self.nav_tabs)
 
         # Stacked widget for pages
         self.stack = QStackedWidget()
@@ -93,7 +88,6 @@ class MainWindow(QMainWindow):
             self.stack.addWidget(scroll_area)
         page_layout.addWidget(self.stack, 1)
 
-        self.numeric_wheel_filter = FocusedNumericWheelFilter(self)
         for _, page in pages:
             wheel_editable_widgets = (
                 page.findChildren(QAbstractSpinBox)
@@ -102,11 +96,9 @@ class MainWindow(QMainWindow):
             )
             for widget in wheel_editable_widgets:
                 widget.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-                widget.installEventFilter(self.numeric_wheel_filter)
 
-        self.nav_list.currentRowChanged.connect(self.stack.setCurrentIndex)
+        self.nav_tabs.currentChanged.connect(self.stack.setCurrentIndex)
         self.update_nav()
-        self.nav_list.setCurrentRow(0)
 
         action_layout = QHBoxLayout()
         action_layout.addStretch(1)
@@ -128,9 +120,12 @@ class MainWindow(QMainWindow):
             QPlainTextEdit,
             QSlider,
         )
+        setting_widgets = self.findChildren(QWidget)
+        if self.project_settings_panel is not None:
+            setting_widgets += self.project_settings_panel.findChildren(QWidget)
         editable_widgets = [
             widget
-            for widget in self.findChildren(QWidget)
+            for widget in setting_widgets
             if isinstance(widget, editable_types)
         ]
 
@@ -167,35 +162,6 @@ class MainWindow(QMainWindow):
 
     def update_nav(self):
         show_advanced = self.advanced_checkbox.isChecked()
-        # Remember the currently selected logical page index (in all_pages)
-        current_nav_row = self.nav_list.currentRow()
-        current_logical_index = self.page_map[current_nav_row] if hasattr(self, 'page_map') and 0 <= current_nav_row < len(self.page_map) else None
-
-        self.nav_list.clear()
-        self.page_map = []
-        for i, (name, _) in enumerate(self.all_pages):
-            if i in self.advanced_pages and not show_advanced:
-                continue
-            self.nav_list.addItem(name)
-            self.page_map.append(i)
-
-        # Try to restore selection to the same logical page if still visible
-        new_row = 0
-        if current_logical_index is not None:
-            try:
-                new_row = self.page_map.index(current_logical_index)
-            except ValueError:
-                # If the previous tab is now hidden, select the next available tab
-                if current_nav_row < len(self.page_map):
-                    new_row = current_nav_row
-                else:
-                    new_row = max(0, len(self.page_map) - 1)
-
-        self.nav_list.currentRowChanged.disconnect()
-        self.nav_list.currentRowChanged.connect(self._sync_stack)
-        self.nav_list.setCurrentRow(new_row)
-        self._sync_stack(new_row)
-
-    def _sync_stack(self, nav_row):
-        if 0 <= nav_row < len(self.page_map):
-            self.stack.setCurrentIndex(self.page_map[nav_row])
+        for i in range(len(self.all_pages)):
+            self.nav_tabs.setTabVisible(i, i not in self.advanced_pages or show_advanced)
+        self.stack.setCurrentIndex(self.nav_tabs.currentIndex())

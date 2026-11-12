@@ -1,4 +1,5 @@
 from datetime import datetime
+from pathlib import Path
 
 from PyQt6.QtWidgets import QApplication, QFileDialog, QWidget
 
@@ -23,8 +24,8 @@ def test_project_fields_update_pipeline_settings_and_preview():
     assert settings.savedir_name == "screen_1"
     assert settings.dev_mode is True
     assert settings.base_url == "analysis-server"
-    assert panel.run_directory_preview.text() == (
-        f"{datetime.now():%Y%m%d}_screen_1"
+    assert Path(panel.run_directory_preview.text()) == (
+        Path("C:/experiments") / f"{datetime.now():%Y%m%d}_screen_1"
     )
 
 

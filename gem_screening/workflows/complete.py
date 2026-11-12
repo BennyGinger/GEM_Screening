@@ -48,6 +48,7 @@ def complete_pipeline(
         dish_kwargs = settings.dish_settings.model_dump(exclude={"well_grouping"})
         if interaction is not None:
             dish_kwargs["review_callback"] = interaction.run_autofocus_check
+            dish_kwargs["prompt_callback"] = interaction.read_console_input
             dish_kwargs["cancel_check"] = interaction.check_cancelled
         dish_grid = launch_dish_workflow(
             a1_manager,

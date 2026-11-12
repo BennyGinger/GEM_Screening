@@ -246,7 +246,6 @@ class AcquisitionPage(QWidget):
         self.optical_config.currentTextChanged.connect(self.update_measure_optical)
         self.intensity_slider.valueChanged.connect(self.update_measure_intensity)
         self.exposure.valueChanged.connect(self.update_measure_exposure)
-        layout.addRow(preset_group)
 
         # Preset Refseg group with checkbox as title
         self.refseg_group = QGroupBox()
@@ -287,7 +286,10 @@ class AcquisitionPage(QWidget):
         self.ref_optical_config.currentTextChanged.connect(self.update_refseg_optical)
         self.ref_intensity_slider.valueChanged.connect(self.update_refseg_intensity)
         self.ref_exposure.valueChanged.connect(self.update_refseg_exposure)
-        layout.addRow(self.refseg_group)
+        presets_layout = QHBoxLayout()
+        presets_layout.addWidget(preset_group, 1)
+        presets_layout.addWidget(self.refseg_group, 1)
+        layout.addRow(presets_layout)
         
         def set_refseg_enabled(enabled):
             for widget in [

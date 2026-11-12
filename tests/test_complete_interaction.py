@@ -77,6 +77,7 @@ def test_complete_pipeline_passes_gui_autofocus_review_to_a1(tmp_path, monkeypat
     complete_pipeline(settings, run_dir=tmp_path, interaction=interaction)
 
     assert launch.call_args.kwargs["review_callback"] == interaction.run_autofocus_check
+    assert launch.call_args.kwargs["prompt_callback"] == interaction.read_console_input
     assert launch.call_args.kwargs["cancel_check"] == interaction.check_cancelled
     flow.assert_called_once_with(
         grid, manager, tmp_path, "test-run", settings, interaction=interaction

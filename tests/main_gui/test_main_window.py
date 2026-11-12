@@ -20,6 +20,42 @@ def wait_until(predicate, timeout=2.0):
     assert predicate()
 
 
+def test_experiment_and_logging_live_in_header_without_moving_console():
+    window = MainGui()
+    window.show()
+    APP.processEvents()
+    bottom = window.bottom_panel.geometry()
+    window._new_experiment()
+    APP.processEvents()
+    editor = window.settings_window
+    panel = editor.project_settings_panel
+    assert window.experiment_scroll.widget() is panel
+    assert not editor.isAncestorOf(panel)
+    assert [name for name, _ in editor.all_pages] == [
+        "Microscope", "Injection", "Server", "Light-Stimulation"
+    ]
+    assert editor.advanced_checkbox.isHidden()
+    assert editor.nav_tabs.count() == 4
+    editor.nav_tabs.setCurrentIndex(2)
+    assert editor.stack.currentIndex() == 2
+    panel.advanced_button.click()
+    APP.processEvents()
+    assert window.bottom_panel.geometry() == bottom
+    panel.logging_page.level.setCurrentText("DEBUG")
+    panel.logging_page.logfile.setText("custom.log")
+    assert window.pipeline_settings.logging_settings.log_level == "DEBUG"
+    assert window.pipeline_settings.logging_settings.logfile_name == "custom.log"
+    editor.set_read_only(True)
+    editor.nav_tabs.setCurrentIndex(1)
+    assert editor.stack.currentIndex() == 1
+    assert not panel.savedir_edit.isEnabled()
+    assert not panel.logging_page.level.isEnabled()
+    editor.set_read_only(False)
+    assert panel.savedir_edit.isEnabled()
+    assert panel.logging_page.level.isEnabled()
+    window.close()
+
+
 def test_main_gui_loads_settings_and_hosts_celltinder_task():
     window = MainGui()
 
@@ -73,7 +109,7 @@ def test_start_saves_and_locks_settings_until_pipeline_finishes(tmp_path):
     assert window.settings_path is not None
     assert window.settings_path.is_file()
     assert not project_panel.savedir_edit.isEnabled()
-    assert window.settings_window.nav_list.isEnabled()
+    assert window.settings_window.nav_tabs.isEnabled()
     assert "Saved and validated" in window.terminal_widget.toPlainText()
 
     assert not project_panel.savedir_edit.isEnabled()

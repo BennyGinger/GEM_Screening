@@ -186,7 +186,7 @@ class ServerPage(QWidget):
         extra_label.setToolTip("Optional backend-specific settings as a JSON object.")
         adv_layout.addRow(extra_label, self.extra_settings_input)
         self.extra_settings_error = QLabel()
-        self.extra_settings_error.setStyleSheet("color: #b00020;")
+        self.extra_settings_error.setStyleSheet("color: #ff9aa8;")
         adv_layout.addRow("", self.extra_settings_error)
 
         self.advanced_btn = QPushButton("Show Advanced Settings")
